@@ -1,0 +1,343 @@
+
+import express from "express";
+import cors from "cors";
+import Database from "better-sqlite3";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = 5000;
+
+// ===============================
+// MIDDLEWARE
+// ===============================
+app.use(cors());
+app.use(express.json());
+
+// ===============================
+// DATABASE CONNECTION
+// ===============================
+const db = new Database(path.join(__dirname, "velora.db"));
+
+db.pragma("journal_mode = WAL");
+
+// Create table only if it doesn't exist.
+// Existing orders will not be deleted.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    total REAL NOT NULL,
+    items TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// ===============================
+// SAFE DATABASE MIGRATION
+// ===============================
+const orderColumns = db.prepare(
+  "PRAGMA table_info(orders)"
+).all();
+
+const hasStatusColumn = orderColumns.some(
+  (column) => column.name === "status"
+);
+
+if (!hasStatusColumn) {
+  db.exec(`
+    ALTER TABLE orders
+    ADD COLUMN status TEXT NOT NULL DEFAULT 'Pending'
+  `);
+
+  console.log("Migration successful: status column added.");
+} else {
+  console.log("Orders status column already exists.");
+}
+
+const ALLOWED_STATUSES = [
+  "Pending",
+  "Processing",
+  "Shipped",
+  "Delivered",
+  "Cancelled"
+];
+
+console.log("VELORA database connected successfully.");
+
+// ===============================
+// HOME ROUTE
+// ===============================
+app.get("/", (req, res) => {
+  res.json({
+    store: "VELORA",
+    status: "Backend is running!"
+  });
+});
+
+// ===============================
+// HEALTH CHECK
+// ===============================
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "success",
+    database: "connected",
+    store: "VELORA"
+  });
+});
+
+// ===============================
+// CREATE ORDER
+// POST /api/orders
+// ===============================
+app.post("/api/orders", (req, res) => {
+  try {
+    const { customer_name, email, total, items } = req.body;
+
+    if (
+      typeof customer_name !== "string" ||
+      !customer_name.trim() ||
+      typeof email !== "string" ||
+      !email.trim() ||
+      typeof total !== "number" ||
+      !Number.isFinite(total) ||
+      total < 0 ||
+      !Array.isArray(items) ||
+      items.length === 0
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Valid customer_name, email, total and items are required."
+      });
+    }
+
+    const statement = db.prepare(`
+      INSERT INTO orders (
+        customer_name,
+        email,
+        total,
+        items,
+        status
+      )
+      VALUES (?, ?, ?, ?, 'Pending')
+    `);
+
+    const result = statement.run(
+      customer_name.trim(),
+      email.trim(),
+      total,
+      JSON.stringify(items)
+    );
+
+    const order = db.prepare(`
+      SELECT *
+      FROM orders
+      WHERE id = ?
+    `).get(result.lastInsertRowid);
+
+    return res.status(201).json({
+      status: "success",
+      message: "VELORA order created successfully!",
+      orderId: result.lastInsertRowid,
+      order: {
+        ...order,
+        items: JSON.parse(order.items)
+      }
+    });
+  } catch (error) {
+    console.error("Create order error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to create order."
+    });
+  }
+});
+
+// ===============================
+// GET ALL ORDERS
+// GET /api/orders
+// ===============================
+app.get("/api/orders", (req, res) => {
+  try {
+    const orders = db.prepare(`
+      SELECT *
+      FROM orders
+      ORDER BY id DESC
+    `).all();
+
+    const formattedOrders = orders.map((order) => ({
+      ...order,
+      items: JSON.parse(order.items)
+    }));
+
+    return res.json({
+      status: "success",
+      count: formattedOrders.length,
+      orders: formattedOrders
+    });
+  } catch (error) {
+    console.error("Get orders error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to fetch orders."
+    });
+  }
+});
+
+// ===============================
+// UPDATE ORDER STATUS
+// PUT /api/orders/:id/status
+// ===============================
+app.put("/api/orders/:id/status", (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { status } = req.body;
+
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid order ID."
+      });
+    }
+
+    if (
+      typeof status !== "string" ||
+      !ALLOWED_STATUSES.includes(status)
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid order status.",
+        allowedStatuses: ALLOWED_STATUSES
+      });
+    }
+
+    const result = db.prepare(`
+      UPDATE orders
+      SET status = ?
+      WHERE id = ?
+    `).run(status, id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Order not found."
+      });
+    }
+
+    const order = db.prepare(`
+      SELECT *
+      FROM orders
+      WHERE id = ?
+    `).get(id);
+
+    return res.json({
+      status: "success",
+      message: "Order status updated successfully.",
+      order: {
+        ...order,
+        items: JSON.parse(order.items)
+      }
+    });
+  } catch (error) {
+    console.error("Update order status error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to update order status."
+    });
+  }
+});
+
+// ===============================
+// GET SINGLE ORDER
+// GET /api/orders/:id
+// ===============================
+app.get("/api/orders/:id", (req, res) => {
+  try {
+    const id = Number(req.params.id);
+
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid order ID."
+      });
+    }
+
+    const order = db.prepare(`
+      SELECT *
+      FROM orders
+      WHERE id = ?
+    `).get(id);
+
+    if (!order) {
+      return res.status(404).json({
+        status: "error",
+        message: "Order not found."
+      });
+    }
+
+    return res.json({
+      status: "success",
+      order: {
+        ...order,
+        items: JSON.parse(order.items)
+      }
+    });
+  } catch (error) {
+    console.error("Get single order error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to fetch order."
+    });
+  }
+});
+
+// ===============================
+// 404 - ROUTE NOT FOUND
+// ===============================
+app.use((req, res) => {
+  res.status(404).json({
+    status: "error",
+    message: `Route not found: ${req.method} ${req.originalUrl}`
+  });
+});
+
+// ===============================
+// ERROR HANDLER
+// ===============================
+app.use((err, req, res, next) => {
+  console.error("Server error:", err.message);
+
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  return res.status(500).json({
+    status: "error",
+    message: "Internal server error."
+  });
+});
+
+// ===============================
+// START SERVER
+// ===============================
+app.listen(PORT, () => {
+  console.log("----------------------------------");
+  console.log("VELORA BACKEND STARTED");
+  console.log(`Server: http://localhost:${PORT}`);
+  console.log("Database: Connected");
+  console.log("GET    /api/health");
+  console.log("POST   /api/orders");
+  console.log("GET    /api/orders");
+  console.log("GET    /api/orders/:id");
+  console.log("PUT    /api/orders/:id/status");
+  console.log("----------------------------------");
+});

@@ -1,0 +1,301 @@
+
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+
+// Reusable authentication middleware for seller-only routes.
+export function createSellerAuthenticator(jwtSecret) {
+  return function authenticateSeller(req, res, next) {
+    const authorization = req.headers.authorization;
+
+    if (!authorization || !authorization.startsWith("Bearer ")) {
+      return res.status(401).json({
+        status: "error",
+        message: "Authentication token required."
+      });
+    }
+
+    try {
+      const token = authorization.slice("Bearer ".length);
+
+      const payload = jwt.verify(token, jwtSecret, {
+        issuer: "velora-api",
+        audience: "velora-sellers"
+      });
+
+      if (
+        typeof payload !== "object" ||
+        !Number.isSafeInteger(payload.userId) ||
+        payload.role !== "seller"
+      ) {
+        return res.status(401).json({
+          status: "error",
+          message: "Invalid authentication token."
+        });
+      }
+
+      req.seller = {
+        id: payload.userId,
+        role: payload.role
+      };
+
+      return next();
+    } catch {
+      return res.status(401).json({
+        status: "error",
+        message: "Invalid or expired authentication token."
+      });
+    }
+  };
+}
+
+export function registerAuthRoutes(app, db, jwtSecret) {
+  // Create one reusable middleware instance for seller routes.
+  const authenticateSeller = createSellerAuthenticator(jwtSecret);
+
+  // Create seller account and its first store.
+  app.post("/api/auth/register", (req, res) => {
+    try {
+      const { name, email, password, storeName, storeSlug } = req.body ?? {};
+
+      if (
+        typeof name !== "string" ||
+        typeof email !== "string" ||
+        typeof password !== "string" ||
+        typeof storeName !== "string" ||
+        typeof storeSlug !== "string"
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "Name, email, password, storeName and storeSlug are required."
+        });
+      }
+
+      const cleanName = name.trim();
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanStoreName = storeName.trim();
+      const cleanSlug = storeSlug.trim().toLowerCase();
+
+      if (!cleanName || cleanName.length > 100) {
+        return res.status(400).json({
+          status: "error",
+          message: "Name must be between 1 and 100 characters."
+        });
+      }
+
+      if (
+        cleanEmail.length > 254 ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message: "Enter a valid email address."
+        });
+      }
+
+      if (
+        password.length < 8 ||
+        Buffer.byteLength(password, "utf8") > 72
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "Password must be at least 8 characters and at most 72 UTF-8 bytes."
+        });
+      }
+
+      if (!cleanStoreName || cleanStoreName.length > 100) {
+        return res.status(400).json({
+          status: "error",
+          message: "Store name must be between 1 and 100 characters."
+        });
+      }
+
+      if (
+        cleanSlug.length < 3 ||
+        cleanSlug.length > 50 ||
+        !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(cleanSlug)
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "Store slug must be 3-50 characters using lowercase letters, numbers and single hyphens."
+        });
+      }
+
+      const passwordHash = bcrypt.hashSync(password, 12);
+
+      const createSeller = db.transaction(() => {
+        const userResult = db.prepare(`
+          INSERT INTO users (name, email, password_hash, role)
+          VALUES (?, ?, ?, 'seller')
+        `).run(cleanName, cleanEmail, passwordHash);
+
+        const storeResult = db.prepare(`
+          INSERT INTO stores (owner_user_id, name, slug)
+          VALUES (?, ?, ?)
+        `).run(userResult.lastInsertRowid, cleanStoreName, cleanSlug);
+
+        return {
+          userId: Number(userResult.lastInsertRowid),
+          storeId: Number(storeResult.lastInsertRowid)
+        };
+      });
+
+      const created = createSeller();
+
+      const token = jwt.sign(
+        { userId: created.userId, role: "seller" },
+        jwtSecret,
+        {
+          expiresIn: "7d",
+          issuer: "velora-api",
+          audience: "velora-sellers"
+        }
+      );
+
+      return res.status(201).json({
+        status: "success",
+        message: "Seller account and store created successfully.",
+        token,
+        seller: {
+          id: created.userId,
+          name: cleanName,
+          email: cleanEmail,
+          role: "seller"
+        },
+        store: {
+          id: created.storeId,
+          name: cleanStoreName,
+          slug: cleanSlug
+        }
+      });
+    } catch (error) {
+      if (
+        error.code === "SQLITE_CONSTRAINT_UNIQUE" ||
+        error.code === "SQLITE_CONSTRAINT_PRIMARYKEY"
+      ) {
+        return res.status(409).json({
+          status: "error",
+          message: "That email or store URL is already in use."
+        });
+      }
+
+      console.error("Seller registration error:", error.message);
+
+      return res.status(500).json({
+        status: "error",
+        message: "Could not create seller account."
+      });
+    }
+  });
+
+  // Seller login.
+  app.post("/api/auth/login", (req, res) => {
+    try {
+      const { email, password } = req.body ?? {};
+
+      if (
+        typeof email !== "string" ||
+        typeof password !== "string" ||
+        !email.trim() ||
+        !password
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message: "Email and password are required."
+        });
+      }
+
+      const seller = db.prepare(`
+        SELECT id, name, email, password_hash, role
+        FROM users
+        WHERE email = ? COLLATE NOCASE
+      `).get(email.trim());
+
+      if (
+        !seller ||
+        !bcrypt.compareSync(password, seller.password_hash)
+      ) {
+        return res.status(401).json({
+          status: "error",
+          message: "Invalid email or password."
+        });
+      }
+
+      if (seller.role !== "seller") {
+        return res.status(403).json({
+          status: "error",
+          message: "This login endpoint is for seller accounts."
+        });
+      }
+
+      const token = jwt.sign(
+        { userId: seller.id, role: seller.role },
+        jwtSecret,
+        {
+          expiresIn: "7d",
+          issuer: "velora-api",
+          audience: "velora-sellers"
+        }
+      );
+
+      return res.json({
+        status: "success",
+        message: "Login successful.",
+        token,
+        seller: {
+          id: seller.id,
+          name: seller.name,
+          email: seller.email,
+          role: seller.role
+        }
+      });
+    } catch (error) {
+      console.error("Seller login error:", error.message);
+
+      return res.status(500).json({
+        status: "error",
+        message: "Could not log in."
+      });
+    }
+  });
+
+  // Protected endpoint: logged-in seller's profile and stores.
+  app.get("/api/auth/me", authenticateSeller, (req, res) => {
+    try {
+      const seller = db.prepare(`
+        SELECT id, name, email, role, created_at
+        FROM users
+        WHERE id = ? AND role = 'seller'
+      `).get(req.seller.id);
+
+      if (!seller) {
+        return res.status(401).json({
+          status: "error",
+          message: "Seller account no longer exists."
+        });
+      }
+
+      const stores = db.prepare(`
+        SELECT id, name, slug, description, created_at
+        FROM stores
+        WHERE owner_user_id = ?
+        ORDER BY id
+      `).all(seller.id);
+
+      return res.json({
+        status: "success",
+        seller,
+        stores
+      });
+    } catch (error) {
+      console.error("Seller profile error:", error.message);
+
+      return res.status(500).json({
+        status: "error",
+        message: "Could not load seller profile."
+      });
+    }
+  });
+}

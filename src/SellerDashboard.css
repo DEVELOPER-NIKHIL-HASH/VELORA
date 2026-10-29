@@ -1,0 +1,1471 @@
+/* VELORA Seller Dashboard - Visual Reference Reproduction */
+
+:root {
+  --sd-bg: #f8f9fa;
+  --sd-sidebar-bg: #111215;
+  --sd-sidebar-border: rgba(255, 255, 255, 0.08);
+  --sd-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --sd-sidebar-active: rgba(255, 255, 255, 0.12);
+  --sd-sidebar-text: #9ca3af;
+  --sd-sidebar-text-hover: #ffffff;
+  --sd-gold: #d4af37;
+  --sd-gold-hover: #dfbc49;
+  --sd-card-bg: #ffffff;
+  --sd-border: #edf0f4;
+  --sd-border-focus: #d4af37;
+  --sd-text-main: #111827;
+  --sd-text-muted: #6b7280;
+  --sd-text-light: #9ca3af;
+  --sd-green: #16a34a;
+  --sd-green-bg: #dcfce7;
+  --sd-amber: #d97706;
+  --sd-amber-bg: #fef3c7;
+  --sd-blue: #0284c7;
+  --sd-blue-bg: #e0f2fe;
+  --sd-red: #dc2626;
+  --sd-red-bg: #fee2e2;
+  --sd-radius-card: 14px;
+  --sd-radius-btn: 8px;
+  --sd-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --sd-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
+}
+
+.velora-sd-app {
+  display: flex;
+  min-height: 100vh;
+  background-color: var(--sd-bg);
+  color: var(--sd-text-main);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ==================== SIDEBAR ==================== */
+.velora-sd-sidebar {
+  width: 250px;
+  min-width: 250px;
+  background-color: var(--sd-sidebar-bg);
+  border-right: 1px solid var(--sd-sidebar-border);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  z-index: 40;
+  user-select: none;
+  transition: transform 0.25s ease-in-out;
+}
+
+.velora-sd-sidebar-header {
+  padding: 24px 20px 16px 20px;
+}
+
+.velora-sd-logo-brand {
+  font-family: "Cinzel", "Playfair Display", Georgia, serif;
+  font-size: 20px;
+  letter-spacing: 0.18em;
+  color: var(--sd-gold);
+  font-weight: 700;
+  text-decoration: none;
+  display: block;
+  margin-bottom: 20px;
+  transition: opacity 0.2s;
+}
+
+.velora-sd-logo-brand:hover {
+  opacity: 0.9;
+}
+
+/* Store identity badge */
+.velora-sd-store-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.velora-sd-store-avatar {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: 50%;
+  background: #2a251b;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  color: var(--sd-gold);
+  font-family: Georgia, serif;
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.velora-sd-store-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.velora-sd-store-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.velora-sd-store-name {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+
+.velora-sd-store-url-link {
+  color: #8b949e;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+  margin-top: 3px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.15s;
+}
+
+.velora-sd-store-url-link:hover {
+  color: var(--sd-gold);
+}
+
+.velora-sd-store-url-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Navigation items */
+.velora-sd-nav-container {
+  flex: 1;
+  padding: 10px 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.velora-sd-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: var(--sd-sidebar-text);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+
+.velora-sd-nav-item:hover {
+  background: var(--sd-sidebar-hover);
+  color: var(--sd-sidebar-text-hover);
+}
+
+.velora-sd-nav-item.active {
+  background: var(--sd-sidebar-active);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.velora-sd-nav-item.active .velora-sd-nav-icon {
+  color: var(--sd-gold);
+}
+
+.velora-sd-nav-icon {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+.velora-sd-nav-label {
+  flex: 1;
+}
+
+.velora-sd-nav-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+/* Sidebar Footer (Upgrade & honest plan) */
+.velora-sd-sidebar-footer {
+  padding: 14px 16px 18px 16px;
+  border-top: 1px solid var(--sd-sidebar-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.velora-sd-upgrade-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  text-align: left;
+  width: 100%;
+}
+
+.velora-sd-upgrade-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(212, 175, 55, 0.3);
+}
+
+.velora-sd-upgrade-icon {
+  color: var(--sd-gold);
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+}
+
+.velora-sd-upgrade-title {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.velora-sd-upgrade-sub {
+  color: #8b949e;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.velora-sd-credits-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #090a0c;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.velora-sd-credits-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.velora-sd-credits-label {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.velora-sd-credits-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e5e7eb;
+}
+
+/* ==================== WORKSPACE MAIN ==================== */
+.velora-sd-workspace {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--sd-bg);
+}
+
+/* Topbar Header */
+.velora-sd-topbar {
+  height: 64px;
+  background-color: #ffffff;
+  border-bottom: 1px solid var(--sd-border);
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.velora-sd-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  max-width: 480px;
+}
+
+.velora-sd-mobile-toggle {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--sd-text-main);
+}
+
+.velora-sd-search-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f4f5f7;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 7px 14px;
+  width: 100%;
+  max-width: 380px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.velora-sd-search-box:focus-within {
+  background: #ffffff;
+  border-color: #d1d5db;
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.15);
+}
+
+.velora-sd-search-box svg {
+  width: 16px;
+  height: 16px;
+  color: #9ca3af;
+}
+
+.velora-sd-search-box input {
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 13.5px;
+  color: var(--sd-text-main);
+  width: 100%;
+}
+
+.velora-sd-search-box input::placeholder {
+  color: #9ca3af;
+}
+
+/* Topbar Right Actions */
+.velora-sd-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  position: relative;
+}
+
+.velora-sd-notif-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4b5563;
+  transition: background 0.15s, color 0.15s;
+}
+
+.velora-sd-notif-btn:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.velora-sd-notif-badge {
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  background: #ef4444;
+  border-radius: 50%;
+  border: 1.5px solid #ffffff;
+}
+
+/* Seller profile chip */
+.velora-sd-profile-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  transition: background 0.15s;
+}
+
+.velora-sd-profile-chip:hover {
+  background: #f3f4f6;
+}
+
+.velora-sd-avatar-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #8b6f47;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.velora-sd-profile-text {
+  text-align: left;
+  line-height: 1.25;
+}
+
+.velora-sd-profile-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sd-text-main);
+  white-space: nowrap;
+}
+
+.velora-sd-profile-role {
+  font-size: 11px;
+  color: var(--sd-text-muted);
+}
+
+.velora-sd-profile-chevron {
+  width: 14px;
+  height: 14px;
+  color: #9ca3af;
+}
+
+/* Profile Dropdown Menu */
+.velora-sd-dropdown-menu {
+  position: absolute;
+  top: 50px;
+  right: 0;
+  width: 220px;
+  background: #ffffff;
+  border: 1px solid var(--sd-border);
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  padding: 8px 0;
+  z-index: 50;
+  animation: sdFadeIn 0.15s ease-out;
+}
+
+@keyframes sdFadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.velora-sd-dropdown-item {
+  width: 100%;
+  padding: 9px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  color: var(--sd-text-main);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.velora-sd-dropdown-item:hover {
+  background: #f9fafb;
+}
+
+.velora-sd-dropdown-item.danger {
+  color: var(--sd-red);
+}
+
+.velora-sd-dropdown-divider {
+  height: 1px;
+  background: var(--sd-border);
+  margin: 6px 0;
+}
+
+/* ==================== WORKSPACE CONTENT ==================== */
+.velora-sd-content {
+  padding: 28px;
+  flex: 1;
+}
+
+/* Welcome Header Banner */
+.velora-sd-welcome-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.velora-sd-welcome-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--sd-text-main);
+  letter-spacing: -0.02em;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.velora-sd-welcome-sub {
+  color: var(--sd-text-muted);
+  font-size: 14px;
+  margin: 4px 0 0 0;
+}
+
+.velora-sd-view-store-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: var(--sd-radius-btn);
+  background: #111827;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  border: 1px solid #111827;
+  transition: background 0.15s, transform 0.15s;
+  cursor: pointer;
+}
+
+.velora-sd-view-store-btn:hover {
+  background: #1f2937;
+  transform: translateY(-1px);
+}
+
+/* ==================== 4 OVERVIEW METRIC CARDS ==================== */
+.velora-sd-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+.velora-sd-metric-card {
+  background: var(--sd-card-bg);
+  border: 1px solid var(--sd-border);
+  border-radius: var(--sd-radius-card);
+  padding: 20px 22px;
+  box-shadow: var(--sd-shadow-sm);
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.velora-sd-metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sd-shadow-md);
+}
+
+.velora-sd-metric-icon-wrap {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #f4f5f7;
+  border: 1px solid #edeef2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #374151;
+  flex-shrink: 0;
+}
+
+.velora-sd-metric-body {
+  flex: 1;
+}
+
+.velora-sd-metric-label {
+  font-size: 13px;
+  color: var(--sd-text-muted);
+  font-weight: 500;
+  margin: 0;
+}
+
+.velora-sd-metric-val {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--sd-text-main);
+  margin: 4px 0;
+  letter-spacing: -0.02em;
+}
+
+.velora-sd-metric-trend {
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.velora-sd-metric-trend.up {
+  color: var(--sd-green);
+}
+
+.velora-sd-metric-trend.down {
+  color: var(--sd-red);
+}
+
+.velora-sd-metric-trend.neutral {
+  color: var(--sd-text-muted);
+}
+
+/* ==================== MIDDLE ROW (Chart + Recent Orders) ==================== */
+.velora-sd-middle-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 20px;
+  margin-bottom: 22px;
+}
+
+.velora-sd-card {
+  background: var(--sd-card-bg);
+  border: 1px solid var(--sd-border);
+  border-radius: var(--sd-radius-card);
+  padding: 22px 24px;
+  box-shadow: var(--sd-shadow-sm);
+  display: flex;
+  flex-direction: column;
+}
+
+.velora-sd-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.velora-sd-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--sd-text-main);
+  margin: 0;
+}
+
+.velora-sd-card-action {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sd-text-muted);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.velora-sd-card-action:hover {
+  color: var(--sd-text-main);
+  text-decoration: underline;
+}
+
+.velora-sd-select-pill {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--sd-border);
+  background: #f9fafb;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--sd-text-main);
+  cursor: pointer;
+  outline: none;
+}
+
+/* Sales SVG Chart */
+.velora-sd-chart-wrap {
+  width: 100%;
+  height: 230px;
+  position: relative;
+}
+
+.velora-sd-chart-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.velora-sd-chart-grid line {
+  stroke: #f1f3f5;
+  stroke-dasharray: 4 4;
+}
+
+.velora-sd-chart-axis-text {
+  font-size: 11px;
+  fill: #9ca3af;
+  font-family: inherit;
+}
+
+.velora-sd-chart-line {
+  fill: none;
+  stroke: #f59e0b;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.velora-sd-chart-dot {
+  fill: #f59e0b;
+  stroke: #ffffff;
+  stroke-width: 2;
+  cursor: pointer;
+  transition: r 0.15s ease;
+}
+
+.velora-sd-chart-dot:hover {
+  r: 6;
+}
+
+/* Recent Orders List in Middle Card */
+.velora-sd-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.velora-sd-order-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  gap: 12px;
+}
+
+.velora-sd-order-item-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.velora-sd-order-thumb {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 8px;
+  background: #f3f4f6;
+  border: 1px solid #edeef2;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #6b7280;
+  overflow: hidden;
+}
+
+.velora-sd-order-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.velora-sd-order-info {
+  min-width: 0;
+}
+
+.velora-sd-order-id {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sd-text-main);
+  line-height: 1.25;
+}
+
+.velora-sd-order-customer {
+  font-size: 12px;
+  color: var(--sd-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.velora-sd-order-amount {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sd-text-main);
+  white-space: nowrap;
+}
+
+.velora-sd-order-item-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.velora-sd-status-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.velora-sd-status-badge.pending {
+  background: var(--sd-amber-bg);
+  color: var(--sd-amber);
+}
+
+.velora-sd-status-badge.processing {
+  background: var(--sd-blue-bg);
+  color: var(--sd-blue);
+}
+
+.velora-sd-status-badge.shipped {
+  background: var(--sd-green-bg);
+  color: var(--sd-green);
+}
+
+.velora-sd-status-badge.delivered {
+  background: var(--sd-green-bg);
+  color: var(--sd-green);
+}
+
+.velora-sd-status-badge.cancelled {
+  background: var(--sd-red-bg);
+  color: var(--sd-red);
+}
+
+.velora-sd-time-ago {
+  font-size: 11px;
+  color: var(--sd-text-light);
+}
+
+/* ==================== BOTTOM ROW ==================== */
+.velora-sd-bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+/* Top Products list */
+.velora-sd-product-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.velora-sd-product-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.velora-sd-product-thumb {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 8px;
+  background: #f3f4f6;
+  border: 1px solid #edeef2;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.velora-sd-product-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.velora-sd-product-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.velora-sd-product-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sd-text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+
+.velora-sd-product-prices {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.velora-sd-product-price {
+  font-weight: 600;
+  color: var(--sd-text-main);
+}
+
+.velora-sd-product-oldprice {
+  color: #9ca3af;
+  text-decoration: line-through;
+}
+
+.velora-sd-product-discount {
+  color: var(--sd-green);
+  font-weight: 500;
+}
+
+.velora-sd-product-sold {
+  font-size: 12px;
+  color: var(--sd-text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Recent Activity list */
+.velora-sd-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.velora-sd-activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.velora-sd-activity-icon {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 8px;
+  background: #f4f5f7;
+  border: 1px solid #edeef2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4b5563;
+  margin-top: 2px;
+}
+
+.velora-sd-activity-content {
+  flex: 1;
+}
+
+.velora-sd-activity-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sd-text-main);
+  line-height: 1.35;
+}
+
+.velora-sd-activity-time {
+  font-size: 11px;
+  color: var(--sd-text-light);
+  margin-top: 2px;
+}
+
+/* Customize Your Store Promotional Card */
+.velora-sd-promo-card {
+  border-radius: var(--sd-radius-card);
+  padding: 26px 24px;
+  background: linear-gradient(135deg, #18191d 0%, #0d0e11 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 250px;
+  position: relative;
+  overflow: hidden;
+}
+
+.velora-sd-promo-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(212, 175, 55, 0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.velora-sd-promo-brand {
+  font-family: "Cinzel", "Playfair Display", Georgia, serif;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: var(--sd-gold);
+  font-weight: 700;
+}
+
+.velora-sd-promo-heading {
+  font-size: 19px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 12px 0 6px 0;
+  letter-spacing: -0.01em;
+}
+
+.velora-sd-promo-desc {
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 20px 0;
+}
+
+.velora-sd-promo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--sd-radius-btn);
+  background: #ffffff;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s;
+  width: fit-content;
+}
+
+.velora-sd-promo-btn:hover {
+  background: #f3f4f6;
+  transform: translateX(2px);
+}
+
+/* ==================== SUB-VIEWS / SECTIONS ==================== */
+.velora-sd-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.velora-sd-section-title-wrap h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--sd-text-main);
+}
+
+.velora-sd-section-title-wrap p {
+  color: var(--sd-text-muted);
+  font-size: 13.5px;
+  margin: 4px 0 0 0;
+}
+
+.velora-sd-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.velora-sd-filter-pill {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--sd-border);
+  background: #ffffff;
+  color: var(--sd-text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.velora-sd-filter-pill:hover {
+  border-color: #cbd5e1;
+  color: var(--sd-text-main);
+}
+
+.velora-sd-filter-pill.active {
+  background: #111827;
+  border-color: #111827;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.velora-sd-table-wrap {
+  background: #ffffff;
+  border: 1px solid var(--sd-border);
+  border-radius: var(--sd-radius-card);
+  box-shadow: var(--sd-shadow-sm);
+  overflow-x: auto;
+}
+
+.velora-sd-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13.5px;
+}
+
+.velora-sd-table th {
+  padding: 14px 18px;
+  background: #f9fafb;
+  border-bottom: 1px solid var(--sd-border);
+  color: #4b5563;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.velora-sd-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid #f1f3f5;
+  color: var(--sd-text-main);
+  vertical-align: middle;
+}
+
+.velora-sd-table tr:last-child td {
+  border-bottom: none;
+}
+
+.velora-sd-table tr:hover td {
+  background: #fafbfc;
+}
+
+.velora-sd-btn-primary {
+  padding: 9px 18px;
+  border-radius: var(--sd-radius-btn);
+  background: #111827;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid #111827;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.velora-sd-btn-primary:hover {
+  background: #1f2937;
+}
+
+.velora-sd-btn-secondary {
+  padding: 8px 16px;
+  border-radius: var(--sd-radius-btn);
+  background: #ffffff;
+  color: var(--sd-text-main);
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--sd-border);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.velora-sd-btn-secondary:hover {
+  border-color: #cbd5e1;
+  background: #f9fafb;
+}
+
+/* Empty State */
+.velora-sd-empty-state {
+  text-align: center;
+  padding: 44px 20px;
+  color: var(--sd-text-muted);
+}
+
+.velora-sd-empty-icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+  display: inline-block;
+  opacity: 0.7;
+}
+
+.velora-sd-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sd-text-main);
+  margin: 0 0 4px 0;
+}
+
+.velora-sd-empty-desc {
+  font-size: 13px;
+  margin: 0 auto;
+  max-width: 320px;
+  color: var(--sd-text-muted);
+}
+
+/* Modal styles */
+.velora-sd-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.velora-sd-modal-content {
+  background: #ffffff;
+  border: 1px solid var(--sd-border);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 540px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  padding: 28px;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: sdModalZoom 0.18s ease-out;
+}
+
+@keyframes sdModalZoom {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.velora-sd-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.velora-sd-modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--sd-text-main);
+}
+
+.velora-sd-modal-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.velora-sd-modal-close:hover {
+  color: #111827;
+}
+
+.velora-sd-form-group {
+  margin-bottom: 16px;
+}
+
+.velora-sd-form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sd-text-main);
+  margin-bottom: 6px;
+}
+
+.velora-sd-form-input,
+.velora-sd-form-textarea,
+.velora-sd-form-select {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--sd-border);
+  font-size: 13.5px;
+  color: var(--sd-text-main);
+  outline: none;
+  box-sizing: border-box;
+  background: #ffffff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.velora-sd-form-input:focus,
+.velora-sd-form-textarea:focus,
+.velora-sd-form-select:focus {
+  border-color: #111827;
+  box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.08);
+}
+
+.velora-sd-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+/* Toast alert messages */
+.velora-sd-alert {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.velora-sd-alert.success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+.velora-sd-alert.error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+/* ==================== LOGIN SCREEN ==================== */
+.velora-sd-login-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #0f1012;
+}
+
+.velora-sd-login-back {
+  color: #9ca3af;
+  text-decoration: none;
+  font-size: 13px;
+  margin-bottom: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.15s;
+}
+
+.velora-sd-login-back:hover {
+  color: #ffffff;
+}
+
+.velora-sd-login-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 38px 32px;
+  border-radius: 18px;
+  background: #17181c;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+}
+
+.velora-sd-login-brand {
+  font-family: "Cinzel", "Playfair Display", Georgia, serif;
+  font-size: 22px;
+  letter-spacing: 0.18em;
+  color: var(--sd-gold);
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.velora-sd-login-title {
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  margin: 0 0 6px 0;
+  color: #ffffff;
+}
+
+.velora-sd-login-subtitle {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+  margin: 0 0 24px 0;
+}
+
+/* ==================== RESPONSIVE LAYOUTS ==================== */
+@media (max-width: 1180px) {
+  .velora-sd-overview-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .velora-sd-middle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .velora-sd-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .velora-sd-mobile-toggle {
+    display: block;
+  }
+
+  .velora-sd-sidebar {
+    position: fixed;
+    transform: translateX(-100%);
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+  }
+
+  .velora-sd-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .velora-sd-mobile-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 35;
+  }
+
+  .velora-sd-topbar {
+    padding: 0 16px;
+  }
+
+  .velora-sd-content {
+    padding: 18px 16px;
+  }
+
+  .velora-sd-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .velora-sd-profile-name,
+  .velora-sd-profile-role {
+    display: none;
+  }
+}

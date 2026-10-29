@@ -1,0 +1,46 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Private backend environment variables
+server/.env
+
+# Seller-uploaded branding files (keep folder)
+server/uploads/logos/*
+!server/uploads/logos/.gitkeep
+# Environment secrets
+.env
+.env.*
+!.env.example
+server/.env
+# Local databases
+velora.db
+velora.db-*
+*.sqlite
+*.sqlite3
+
+# SQLite databases and runtime files
+*.db
+*.db-shm
+*.db-wal

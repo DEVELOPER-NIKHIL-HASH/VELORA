@@ -1,0 +1,231 @@
+
+.admin-page {
+  min-height: 100vh;
+  padding: 32px;
+  background: #090a0d;
+  color: #f5f5f5;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.admin-header,
+.orders-toolbar,
+.order-heading,
+.order-controls,
+.header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.admin-header {
+  margin-bottom: 30px;
+}
+
+.admin-brand,
+.order-id {
+  color: #d4af65;
+  font-weight: 800;
+  letter-spacing: 3px;
+}
+
+.admin-header h1 {
+  margin: 12px 0 6px;
+  font-size: clamp(28px, 4vw, 42px);
+}
+
+.muted {
+  color: #9a9ba5;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 15px;
+  margin-bottom: 25px;
+}
+
+.admin-stat,
+.admin-panel {
+  background: #121318;
+  border: 1px solid #292a31;
+  border-radius: 14px;
+}
+
+.admin-stat {
+  padding: 22px;
+}
+
+.admin-stat p {
+  margin: 0 0 12px;
+}
+
+.admin-stat strong {
+  font-size: 24px;
+  overflow-wrap: anywhere;
+}
+
+.admin-panel {
+  padding: 24px;
+}
+
+.orders-toolbar {
+  margin-bottom: 22px;
+}
+
+.orders-toolbar h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.orders-toolbar p {
+  margin-bottom: 0;
+}
+
+.admin-search,
+.status-control select {
+  background: #090a0d;
+  border: 1px solid #383942;
+  color: white;
+  padding: 12px 14px;
+  border-radius: 9px;
+}
+
+.admin-search {
+  width: min(100%, 360px);
+}
+
+.admin-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  border: 0;
+  border-radius: 9px;
+  padding: 12px 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.admin-button.gold {
+  background: #d4af65;
+  color: #111;
+}
+
+.admin-button.secondary {
+  background: #202127;
+  color: #fff;
+  border: 1px solid #383942;
+}
+
+.order-card {
+  padding: 23px 0;
+  border-top: 1px solid #292a31;
+}
+
+.order-heading h3 {
+  margin: 9px 0 4px;
+  font-size: 17px;
+}
+
+.order-heading p {
+  margin: 5px 0;
+}
+
+.order-price {
+  text-align: right;
+}
+
+.order-price strong {
+  font-size: 19px;
+}
+
+.order-items {
+  margin: 18px 0;
+  padding: 14px;
+  background: #0a0b0f;
+  border-radius: 9px;
+}
+
+.order-items > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  font-size: 13px;
+}
+
+.order-items > div span {
+  overflow-wrap: anywhere;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 30px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.status-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 13px;
+  color: #aaaab3;
+}
+
+.status-control select {
+  cursor: pointer;
+}
+
+.admin-error {
+  color: #ff7777;
+  overflow-wrap: anywhere;
+}
+
+.admin-success {
+  color: #6ce3a0;
+  overflow-wrap: anywhere;
+}
+
+.admin-footer {
+  padding: 25px 0;
+  color: #858691;
+  font-size: 12px;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .admin-page {
+    padding: 18px 12px;
+  }
+
+  .admin-panel {
+    padding: 15px;
+  }
+
+  .admin-search {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .order-price {
+    text-align: left;
+  }
+
+  .order-controls {
+    align-items: flex-start;
+  }
+}

@@ -1,0 +1,290 @@
+﻿import "./AdminDashboard.css";
+import { useCallback, useEffect, useState } from "react";
+
+type OrderStatus =
+  | "Pending"
+  | "Processing"
+  | "Shipped"
+  | "Delivered"
+  | "Cancelled";
+
+type OrderItem = {
+  id?: number;
+  name: string;
+  price: number;
+  quantity: number;
+};
+
+type Order = {
+  id: number;
+  customer_name: string;
+  email: string;
+  total: number;
+  items: OrderItem[];
+  created_at: string;
+  status: OrderStatus;
+};
+
+const API_URL = "http://localhost:5000/api/orders";
+
+const STATUSES: OrderStatus[] = [
+  "Pending",
+  "Processing",
+  "Shipped",
+  "Delivered",
+  "Cancelled",
+];
+
+const COLORS: Record<OrderStatus, string> = {
+  Pending: "#d97706",
+  Processing: "#2563eb",
+  Shipped: "#7c3aed",
+  Delivered: "#16a34a",
+  Cancelled: "#dc2626",
+};
+
+const money = (value: number) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(value);
+
+export default function AdminDashboard() {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [saving, setSaving] = useState<number | null>(null);
+  const [adminToken, setAdminToken] = useState(
+    () => sessionStorage.getItem("velora_admin_token") ?? ""
+  );
+  const [adminPassword, setAdminPassword] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch(API_URL, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Orders load nahi hue.");
+      }
+
+      setOrders(data.orders ?? []);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Backend se connect nahi hua."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [adminToken]);
+
+  useEffect(() => {
+    void loadOrders();
+  }, [loadOrders]);
+
+  async function changeStatus(id: number, status: OrderStatus) {
+    setSaving(id);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(`${API_URL}/${id}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ status }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Status update failed.");
+      }
+
+      setOrders((current) =>
+        current.map((order) =>
+          order.id === id ? { ...order, ...data.order } : order
+        )
+      );
+
+      setNotice(`Order #${id} updated to ${status}.`);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Status update failed."
+      );
+      await loadOrders();
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  const filteredOrders = orders.filter((order) => {
+    const query = search.toLowerCase();
+
+    return (
+      String(order.id).includes(query) ||
+      order.customer_name.toLowerCase().includes(query) ||
+      order.email.toLowerCase().includes(query) ||
+      order.status.toLowerCase().includes(query)
+    );
+  });
+
+  const totalValue = orders.reduce((sum, order) => sum + order.total, 0);
+
+  const statCards = [
+    { label: "Total Orders", value: String(orders.length) },
+    { label: "Total Order Value", value: money(totalValue) },
+    {
+      label: "Pending",
+      value: String(orders.filter((o) => o.status === "Pending").length),
+    },
+    {
+      label: "Delivered",
+      value: String(orders.filter((o) => o.status === "Delivered").length),
+    },
+  ];
+
+  return (
+    <main className="admin-page">
+      <header className="admin-header">
+        <div>
+          <div className="admin-brand">V E L O R A</div>
+          <h1>Order Management</h1>
+          <p className="muted">Admin Dashboard Â· Order fulfillment</p>
+        </div>
+
+        <div className="header-actions">
+          <a className="admin-button secondary" href="/">
+            â† Storefront
+          </a>
+          <button
+            className="admin-button gold"
+            onClick={() => void loadOrders()}
+            disabled={loading}
+          >
+            {loading ? "Loading..." : "â†» Refresh"}
+          </button>
+        </div>
+      </header>
+
+      <section className="admin-stats">
+        {statCards.map((card) => (
+          <article className="admin-stat" key={card.label}>
+            <p className="muted">{card.label}</p>
+            <strong>{card.value}</strong>
+          </article>
+        ))}
+      </section>
+
+      <section className="admin-panel">
+        <div className="orders-toolbar">
+          <div>
+            <h2>All Orders</h2>
+            <p className="muted">{filteredOrders.length} order(s)</p>
+          </div>
+
+          <input
+            className="admin-search"
+            placeholder="Search order, customer, email..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+
+        {error && <p className="admin-error">{error}</p>}
+        {notice && <p className="admin-success">{notice}</p>}
+
+        {loading && <p className="muted">Loading orders...</p>}
+
+        {!loading && !error && filteredOrders.length === 0 && (
+          <p className="muted">No orders found.</p>
+        )}
+
+        {!loading &&
+          filteredOrders.map((order) => (
+            <article className="order-card" key={order.id}>
+              <div className="order-heading">
+                <div>
+                  <span className="order-id">ORDER #{order.id}</span>
+                  <h3>{order.customer_name}</h3>
+                  <p className="muted">{order.email}</p>
+                </div>
+
+                <div className="order-price">
+                  <strong>{money(order.total)}</strong>
+                  <p className="muted">
+                    {new Date(
+                      order.created_at.replace(" ", "T") + "Z"
+                    ).toLocaleString("en-IN")}
+                  </p>
+                </div>
+              </div>
+
+              <div className="order-items">
+                {order.items.map((item, index) => (
+                  <div key={`${item.id ?? item.name}-${index}`}>
+                    <span>
+                      {item.name} Ã— {item.quantity}
+                    </span>
+                    <span>{money(item.price * item.quantity)}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="order-controls">
+                <span
+                  className="status-badge"
+                  style={{
+                    background: COLORS[order.status] ?? "#64748b",
+                  }}
+                >
+                  {order.status}
+                </span>
+
+                <label className="status-control">
+                  <span>Change status</span>
+                  <select
+                    value={order.status}
+                    disabled={saving === order.id}
+                    onChange={(event) =>
+                      void changeStatus(
+                        order.id,
+                        event.target.value as OrderStatus
+                      )
+                    }
+                  >
+                    {STATUSES.map((status) => (
+                      <option value={status} key={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {saving === order.id && (
+                  <span className="muted">Saving...</span>
+                )}
+              </div>
+            </article>
+          ))}
+      </section>
+
+      <footer className="admin-footer">
+        VELORA Â· Connected to the orders API
+      </footer>
+    </main>
+  );
+}
