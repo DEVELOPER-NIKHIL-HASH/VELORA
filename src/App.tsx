@@ -9,6 +9,7 @@ import TrackOrder from "./TrackOrder"
 import SellerDashboard from "./SellerDashboard"
 import SellerRegistrationModal from "./SellerRegistrationModal"
 import SellerStorefront from "./SellerStorefront"
+import { launchRazorpayPayment, type CreatePaymentOrderResponse } from "./services/razorpay"
 
 
 import headphones from "./assets/products/headphones.jpg"
@@ -29,14 +30,14 @@ export type Product = {
 
 export type CartItem = Product & { quantity: number }
 
-type OrderResponse = {
+export type OrderResponse = {
   status?: string
   message?: string
   orderId?: number
 }
 
-const API_BASE = "http://localhost:5000/api"
-const API_URL = `${API_BASE}/orders`
+export const API_BASE = "/api"
+export const API_URL = `${API_BASE}/orders`
 
 const initialProducts: Product[] = [
   {
@@ -183,6 +184,14 @@ function Storefront() {
   const [orderId, setOrderId] = useState<number | null>(null)
   const [orderError, setOrderError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [sandboxSim, setSandboxSim] = useState<{
+    orderId: number
+    razorpay_order_id: string
+    amount: number
+    confirmSuccess: () => Promise<void>
+    simulateFailure: () => Promise<void>
+    simulateCancel: () => Promise<void>
+  } | null>(null)
 
   const accountMenuRef = useRef<HTMLDivElement>(null)
 
@@ -270,7 +279,8 @@ function Storefront() {
     const formData = new FormData(event.currentTarget)
 
     try {
-      const response = await fetch(API_URL, {
+      // Step 1: Create Payment Order on backend (Amount calculated server-side in INR)
+      const response = await fetch("/api/payments/create-order", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -279,51 +289,62 @@ function Storefront() {
         body: JSON.stringify({
           customer_name: String(formData.get("name") ?? "").trim(),
           email: String(formData.get("email") ?? "").trim(),
-          total,
+          phone: String(formData.get("phone") ?? "").trim(),
+          address: String(formData.get("address") ?? "").trim(),
+          city: String(formData.get("city") ?? "").trim(),
+          pincode: String(formData.get("pincode") ?? "").trim(),
           items: cart.map((item) => ({
             id: item.id,
-            name: item.name,
-            price: item.price,
             quantity: item.quantity,
           })),
         }),
       })
 
-      const responseText = await response.text()
-      let data: OrderResponse
-      try {
-        data = JSON.parse(responseText) as OrderResponse
-      } catch {
-        throw new Error(
-          response.status === 404
-            ? "Order API route not found. Ensure backend is running."
-            : `Backend returned invalid response (HTTP ${response.status}).`
-        )
-      }
+      const data: CreatePaymentOrderResponse = await response.json().catch(() => ({}))
 
-      if (!response.ok) {
-        throw new Error(data.message || `Order failed to save (HTTP ${response.status}).`)
+      if (!response.ok || data.status !== "success") {
+        throw new Error(data.message || `Payment order initiation failed (HTTP ${response.status}).`)
       }
 
       if (typeof data.orderId !== "number" || !Number.isFinite(data.orderId)) {
-        throw new Error("Server response missing valid order ID.")
+        throw new Error("Server response missing valid VELORA order ID.")
       }
 
-      setOrderId(data.orderId)
-      setCheckoutOpen(false)
-      setCart([])
-      setCartOpen(false)
-      setOrderSuccess(true)
+      // Step 2: Open Razorpay Checkout modal
+      await launchRazorpayPayment({
+        paymentOrder: data,
+        storeName: "VELORA Marketplace",
+        themeColor: "#D4AF37",
+        onSuccess: (verifyResult) => {
+          setOrderId(verifyResult.orderId)
+          setCheckoutOpen(false)
+          setCart([])
+          setCartOpen(false)
+          setOrderSuccess(true)
+          setIsSubmitting(false)
+        },
+        onFailure: (err) => {
+          console.warn("Payment error:", err)
+          setOrderError(err.message || "Payment could not be completed. Please retry.")
+          setIsSubmitting(false)
+        },
+        onDismiss: () => {
+          setIsSubmitting(false)
+        },
+        onShowSandboxSimulation: (simDetails) => {
+          setSandboxSim(simDetails)
+          setIsSubmitting(false)
+        },
+      })
     } catch (error) {
-      console.error("VELORA order error:", error)
+      console.error("VELORA payment initiation error:", error)
       setOrderError(
         error instanceof TypeError
-          ? "Unable to connect to VELORA backend. Please ensure the Node server is running on localhost:5000."
+          ? "Unable to connect to VELORA backend. Please ensure the server is running."
           : error instanceof Error
             ? error.message
-            : "Order could not be saved. Please retry."
+            : "Payment order could not be created. Please retry."
       )
-    } finally {
       setIsSubmitting(false)
     }
   }
@@ -970,34 +991,34 @@ function Storefront() {
           </div>
 
           <div className="mt-14 grid gap-8 md:grid-cols-3">
-            <div className="rounded-2xl border border-black/10 dark:border-white/10 p-8 bg-white dark:bg-[#141416]/50">
-              <span className="text-2xl font-editorial-serif text-[#D4AF37]">01</span>
-              <h3 className="mt-4 text-xl font-medium font-editorial-serif">Curated Independents</h3>
-              <p className="mt-3 text-xs leading-relaxed opacity-60">
+            <div className="rounded-2xl border border-black/10 dark:border-white/10 p-8 bg-white dark:bg-[#141416] transition-colors duration-300">
+              <span className="text-2xl font-editorial-serif text-[#D4AF37] dark:text-[#E5C365]">01</span>
+              <h3 className="mt-4 text-xl font-medium font-editorial-serif text-[#121212] dark:text-[#F5F4F0]">Curated Independents</h3>
+              <p className="mt-3 text-xs leading-relaxed text-[#121212] opacity-60 dark:opacity-100 dark:text-[#E0DDD5]">
                 Every artisan and boutique on VELORA is carefully verified for craftsmanship, ethical manufacturing, and design excellence.
               </p>
             </div>
 
-            <div className="rounded-2xl border border-black/10 dark:border-white/10 p-8 bg-white dark:bg-[#141416]/50">
-              <span className="text-2xl font-editorial-serif text-[#D4AF37]">02</span>
-              <h3 className="mt-4 text-xl font-medium font-editorial-serif">Direct Studio Access</h3>
-              <p className="mt-3 text-xs leading-relaxed opacity-60">
+            <div className="rounded-2xl border border-black/10 dark:border-white/10 p-8 bg-white dark:bg-[#141416] transition-colors duration-300">
+              <span className="text-2xl font-editorial-serif text-[#D4AF37] dark:text-[#E5C365]">02</span>
+              <h3 className="mt-4 text-xl font-medium font-editorial-serif text-[#121212] dark:text-[#F5F4F0]">Direct Studio Access</h3>
+              <p className="mt-3 text-xs leading-relaxed text-[#121212] opacity-60 dark:opacity-100 dark:text-[#E0DDD5]">
                 Purchase directly from the makers. Eliminate unnecessary middleman markups while supporting true independent innovation.
               </p>
             </div>
 
-            <div className="rounded-2xl border border-black/10 dark:border-white/10 p-8 bg-white dark:bg-[#141416]/50 flex flex-col justify-between">
+            <div className="rounded-2xl border border-black/10 dark:border-white/10 p-8 bg-white dark:bg-[#141416] flex flex-col justify-between transition-colors duration-300">
               <div>
-                <span className="text-2xl font-editorial-serif text-[#D4AF37]">03</span>
-                <h3 className="mt-4 text-xl font-medium font-editorial-serif">Open Your Atelier</h3>
-                <p className="mt-3 text-xs leading-relaxed opacity-60">
+                <span className="text-2xl font-editorial-serif text-[#D4AF37] dark:text-[#E5C365]">03</span>
+                <h3 className="mt-4 text-xl font-medium font-editorial-serif text-[#121212] dark:text-[#F5F4F0]">Open Your Atelier</h3>
+                <p className="mt-3 text-xs leading-relaxed text-[#121212] opacity-60 dark:opacity-100 dark:text-[#E0DDD5]">
                   Are you a creator? Showcase your inventory to an international audience appreciative of subtle luxury.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowSellerModal(true)}
-                className="mt-6 inline-flex items-center gap-2 text-xs font-semibold tracking-widest text-[#D4AF37] uppercase hover:underline cursor-pointer"
+                className="mt-6 inline-flex items-center gap-2 text-xs font-semibold tracking-widest text-[#D4AF37] dark:text-[#E5C365] dark:hover:text-[#F3E5AB] uppercase hover:underline cursor-pointer transition-colors"
               >
                 Join as Seller &rarr;
               </button>
@@ -1416,7 +1437,13 @@ function Storefront() {
                       <span>Total Payable</span>
                       <span className="text-[#D4AF37] font-semibold">{formatPrice(total)}</span>
                     </div>
-                    <p className="mt-1 text-[11px] opacity-50">Direct order reservation. No online gateway required.</p>
+                    <div className="flex items-center justify-between pt-2 border-t border-black/5 dark:border-white/10 text-[11px]">
+                      <span className="opacity-70 flex items-center gap-1.5">
+                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+                        Razorpay Gateway (UPI, Cards, NetBanking, Wallets)
+                      </span>
+                      <span className="text-[10px] uppercase tracking-wider text-[#D4AF37] font-medium">100% Secure</span>
+                    </div>
                   </div>
 
                   {orderError && (
@@ -1430,7 +1457,7 @@ function Storefront() {
                     disabled={isSubmitting || cart.length === 0}
                     className="w-full bg-black text-white dark:bg-[#D4AF37] dark:text-black py-4 text-xs font-medium tracking-[0.2em] uppercase shadow-lg mt-2"
                   >
-                    {isSubmitting ? "Securing Order..." : "Confirm & Place Order"}
+                    {isSubmitting ? "Initiating Secure Payment..." : `Pay with Razorpay · ${formatPrice(total)}`}
                   </AnimatedButton>
                 </form>
               </div>
@@ -1473,6 +1500,10 @@ function Storefront() {
                 <div className="mt-6 rounded-xl border border-white/15 bg-white/5 p-4">
                   <p className="text-[11px] text-white/50 tracking-wider uppercase">Order Identifier</p>
                   <p className="mt-1 text-2xl font-semibold font-editorial-serif text-[#D4AF37]">#{orderId}</p>
+                  <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-emerald-400">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+                    <span>Payment Verified via Razorpay</span>
+                  </div>
                 </div>
               )}
 
@@ -1494,6 +1525,63 @@ function Storefront() {
               </div>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Razorpay Sandbox Test Simulation Sheet */}
+      <AnimatePresence>
+        {sandboxSim && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="max-w-sm w-full bg-[#18181b] border border-[#D4AF37]/40 rounded-2xl p-6 text-white text-center shadow-2xl"
+            >
+              <span className="inline-block px-2.5 py-1 rounded-full bg-[#D4AF37]/20 text-[#D4AF37] text-[10px] font-semibold tracking-wider uppercase mb-2">
+                Razorpay Test Sandbox
+              </span>
+              <h3 className="text-lg font-serif">Simulate Payment Gateway</h3>
+              <p className="text-xs text-white/60 mt-1">
+                Order #{sandboxSim.orderId} &middot; {formatPrice(sandboxSim.amount / 100)}
+              </p>
+              <div className="mt-5 space-y-2.5">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const confirm = sandboxSim.confirmSuccess;
+                    setSandboxSim(null);
+                    await confirm();
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition cursor-pointer"
+                >
+                  ✓ Simulate Payment Success
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const fail = sandboxSim.simulateFailure;
+                    setSandboxSim(null);
+                    await fail();
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-red-600/80 hover:bg-red-600 text-white text-xs font-medium transition cursor-pointer"
+                >
+                  ✕ Simulate Payment Failure
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const cancel = sandboxSim.simulateCancel;
+                    setSandboxSim(null);
+                    await cancel();
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 text-xs transition cursor-pointer"
+                >
+                  Cancel Payment
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

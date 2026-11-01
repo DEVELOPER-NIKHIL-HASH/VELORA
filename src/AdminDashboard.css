@@ -167,6 +167,34 @@
   overflow-wrap: anywhere;
 }
 
+.payment-status-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #fff;
+}
+
+.payment-status-badge.paid {
+  background: #059669;
+}
+
+.payment-status-badge.pending {
+  background: #d97706;
+}
+
+.payment-status-badge.failed {
+  background: #dc2626;
+}
+
+.payment-status-badge.cancelled {
+  background: #64748b;
+}
+
 .status-badge {
   display: inline-flex;
   align-items: center;

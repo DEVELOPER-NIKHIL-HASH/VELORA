@@ -90,6 +90,9 @@ type Order = {
   platform_fee?: number | null;
   seller_payout?: number | null;
   fee_rate?: number | null;
+  payment_status?: string | null;
+  razorpay_order_id?: string | null;
+  razorpay_payment_id?: string | null;
 };
 
 type Discount = {
@@ -100,6 +103,54 @@ type Discount = {
   value: number;
   min_order_amount: number;
   is_active: number;
+  created_at: string;
+};
+
+type SellerWalletFinancials = {
+  store_id: number;
+  total_sales: number;
+  total_orders: number;
+  gross_earnings: number;
+  platform_fee: number;
+  net_seller_earnings: number;
+  pending_balance: number;
+  refunded_amount: number;
+  total_order_refunds: number;
+  withdrawn_amount: number;
+  pending_payouts: number;
+  available_balance: number;
+  current_wallet_balance: number;
+  delivered_orders_count: number;
+  pending_orders_count: number;
+  minimum_payout_amount: number;
+};
+
+type PayoutRequest = {
+  id: number;
+  payout_ref: string;
+  amount: number;
+  status: "pending" | "processing" | "completed" | "rejected" | "failed";
+  bank_name: string;
+  bank_account_number: string;
+  bank_ifsc: string;
+  bank_account_holder: string;
+  utr_reference?: string | null;
+  admin_notes?: string | null;
+  requested_at: string;
+  processed_at?: string | null;
+};
+
+type FinancialLedgerEntry = {
+  id: number;
+  transaction_ref: string;
+  order_id?: number | null;
+  payout_id?: number | null;
+  refund_id?: number | null;
+  transaction_type: string;
+  entry_type: "DEBIT" | "CREDIT";
+  amount: number;
+  status: string;
+  description: string;
   created_at: string;
 };
 
@@ -228,6 +279,15 @@ export default function SellerDashboard() {
   const [payoutIfsc, setPayoutIfsc] = useState("");
   const [payoutSaving, setPayoutSaving] = useState(false);
 
+  // Phase 5: Financial Infrastructure state
+  const [sellerFinancials, setSellerFinancials] = useState<SellerWalletFinancials | null>(null);
+  const [sellerPayouts, setSellerPayouts] = useState<PayoutRequest[]>([]);
+  const [sellerTransactions, setSellerTransactions] = useState<FinancialLedgerEntry[]>([]);
+  const [payoutReqAmount, setPayoutReqAmount] = useState("");
+  const [payoutReqLoading, setPayoutReqLoading] = useState(false);
+  const [payoutReqNotice, setPayoutReqNotice] = useState("");
+  const [payoutReqError, setPayoutReqError] = useState("");
+
   // Settings Password form
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -322,6 +382,35 @@ export default function SellerDashboard() {
       if (pluginsRes.ok) {
         const pluginsData = await pluginsRes.json();
         setPlugins(pluginsData.plugins || {});
+      }
+
+      // 7. Fetch genuine wallet financials
+      const walletRes = await fetch(`${API}/seller/wallet`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (walletRes.ok) {
+        const walletData = await walletRes.json();
+        if (walletData.financials) {
+          setSellerFinancials(walletData.financials);
+        }
+      }
+
+      // 8. Fetch seller payout requests
+      const payoutsRes = await fetch(`${API}/seller/payouts`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (payoutsRes.ok) {
+        const payoutsData = await payoutsRes.json();
+        setSellerPayouts(payoutsData.payouts || []);
+      }
+
+      // 9. Fetch financial ledger transactions
+      const txRes = await fetch(`${API}/seller/financials/transactions`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (txRes.ok) {
+        const txData = await txRes.json();
+        setSellerTransactions(txData.transactions || []);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load dashboard.";
@@ -1007,6 +1096,57 @@ export default function SellerDashboard() {
     }
   }
 
+  // Submit Payout Request
+  async function handleRequestPayout(e: FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    setPayoutReqLoading(true);
+    setPayoutReqError("");
+    setPayoutReqNotice("");
+    try {
+      const numAmount = Number(payoutReqAmount);
+      if (!Number.isFinite(numAmount) || numAmount <= 0) {
+        throw new Error("Please enter a valid payout amount.");
+      }
+      const res = await fetch(`${API}/seller/payouts/request`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ amount: numAmount })
+      });
+      const data = await res.json();
+      if (!res.ok || data.status !== "success") {
+        throw new Error(data.message || "Failed to submit payout request.");
+      }
+      setPayoutReqNotice(data.message);
+      setPayoutReqAmount("");
+      if (data.financials) {
+        setSellerFinancials(data.financials);
+      }
+      // Reload payouts and transactions
+      const pRes = await fetch(`${API}/seller/payouts`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        setSellerPayouts(pData.payouts || []);
+      }
+      const txRes = await fetch(`${API}/seller/financials/transactions`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (txRes.ok) {
+        const txData = await txRes.json();
+        setSellerTransactions(txData.transactions || []);
+      }
+    } catch (err) {
+      setPayoutReqError(err instanceof Error ? err.message : "Payout request failed.");
+    } finally {
+      setPayoutReqLoading(false);
+    }
+  }
+
   // Password Change
   async function handleChangePassword(e: FormEvent) {
     e.preventDefault();
@@ -1165,8 +1305,6 @@ export default function SellerDashboard() {
               </div>
               <a
                 href={publicStoreUrl}
-                target="_blank"
-                rel="noopener noreferrer"
                 className="velora-sd-store-url-link"
                 title={`Open /${store?.slug || ""}`}
               >
@@ -1505,8 +1643,6 @@ export default function SellerDashboard() {
                 </div>
                 <a
                   href={publicStoreUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className="velora-sd-dropdown-item"
                 >
                   ↗ View Public Store
@@ -1556,8 +1692,6 @@ export default function SellerDashboard() {
                 </div>
                 <a
                   href={publicStoreUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className="velora-sd-view-store-btn"
                 >
                   <span>View Your Store</span>
@@ -1997,6 +2131,14 @@ export default function SellerDashboard() {
                               <span className={`velora-sd-status-badge ${order.status.toLowerCase()}`}>
                                 {order.status}
                               </span>
+                              {order.payment_status && (
+                                <span
+                                  className={`velora-sd-status-badge ${order.payment_status.toLowerCase() === "paid" ? "delivered" : "cancelled"}`}
+                                  style={{ marginLeft: "4px", fontSize: "10.5px" }}
+                                >
+                                  {order.payment_status}
+                                </span>
+                              )}
                             </td>
                             <td>
                               <select
@@ -2293,50 +2435,176 @@ export default function SellerDashboard() {
           )}
 
           {/* ======================================================== */}
-          {/* TAB 6: PAYOUTS & SETTLEMENTS                             */}
+          {/* TAB 6: PAYOUTS & FINANCIAL INFRASTRUCTURE                 */}
           {/* ======================================================== */}
           {activeTab === "payouts" && (
             <section>
               <div className="velora-sd-section-header">
                 <div className="velora-sd-section-title-wrap">
-                  <h1>Payouts & Settlements</h1>
-                  <p>Settlement accounting and verified bank account destination.</p>
+                  <h1>Financial Infrastructure & Wallet</h1>
+                  <p>Real-time seller wallet, immutable financial ledger, payout requests and bank settlements.</p>
                 </div>
               </div>
 
-              <div className="velora-sd-overview-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-                <div className="velora-sd-metric-card">
+              {/* 1. FINANCIAL OVERVIEW METRICS GRID */}
+              <div className="velora-sd-overview-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+                <div className="velora-sd-metric-card" style={{ border: "1px solid rgba(212, 175, 55, 0.4)", background: "rgba(212, 175, 55, 0.04)" }}>
                   <div className="velora-sd-metric-body">
-                    <p className="velora-sd-metric-label">Gross Completed Volume</p>
-                    <div className="velora-sd-metric-val">{formatMoney(settlementMetrics.grossCompletedVolume)}</div>
-                    <div className="velora-sd-metric-trend neutral">{settlementMetrics.deliveredCount} delivered order(s)</div>
+                    <p className="velora-sd-metric-label" style={{ color: "#d4af37", fontWeight: "700" }}>Available Wallet Balance</p>
+                    <div className="velora-sd-metric-val" style={{ color: "#d4af37" }}>
+                      {formatMoney(sellerFinancials ? sellerFinancials.available_balance : settlementMetrics.netSellerEarnings)}
+                    </div>
+                    <div className="velora-sd-metric-trend up">Eligible for instant withdrawal</div>
                   </div>
                 </div>
+
                 <div className="velora-sd-metric-card">
                   <div className="velora-sd-metric-body">
-                    <p className="velora-sd-metric-label">Platform Fee (3%)</p>
-                    <div className="velora-sd-metric-val">{formatMoney(settlementMetrics.platformFee)}</div>
-                    <div className="velora-sd-metric-trend neutral">3% platform fee on completed orders</div>
+                    <p className="velora-sd-metric-label">Pending Balance (In-Fulfillment)</p>
+                    <div className="velora-sd-metric-val">
+                      {formatMoney(sellerFinancials ? sellerFinancials.pending_balance : 0)}
+                    </div>
+                    <div className="velora-sd-metric-trend neutral">
+                      {sellerFinancials ? `${sellerFinancials.pending_orders_count} order(s) pending delivery` : "Awaiting delivery confirmation"}
+                    </div>
                   </div>
                 </div>
+
                 <div className="velora-sd-metric-card">
                   <div className="velora-sd-metric-body">
-                    <p className="velora-sd-metric-label">Net Seller Earnings</p>
-                    <div className="velora-sd-metric-val">{formatMoney(settlementMetrics.netSellerEarnings)}</div>
-                    <div className="velora-sd-metric-trend up">Eligible for settlement</div>
+                    <p className="velora-sd-metric-label">Gross Store Volume (GMV)</p>
+                    <div className="velora-sd-metric-val">
+                      {formatMoney(sellerFinancials ? sellerFinancials.total_sales : totalSales)}
+                    </div>
+                    <div className="velora-sd-metric-trend neutral">Total store customer volume</div>
+                  </div>
+                </div>
+
+                <div className="velora-sd-metric-card">
+                  <div className="velora-sd-metric-body">
+                    <p className="velora-sd-metric-label">Net Delivered Earnings (97%)</p>
+                    <div className="velora-sd-metric-val">
+                      {formatMoney(sellerFinancials ? sellerFinancials.net_seller_earnings : settlementMetrics.netSellerEarnings)}
+                    </div>
+                    <div className="velora-sd-metric-trend up">Completed delivered sales</div>
+                  </div>
+                </div>
+
+                <div className="velora-sd-metric-card">
+                  <div className="velora-sd-metric-body">
+                    <p className="velora-sd-metric-label">VELORA Platform Fee (3%)</p>
+                    <div className="velora-sd-metric-val">
+                      {formatMoney(sellerFinancials ? sellerFinancials.platform_fee : settlementMetrics.platformFee)}
+                    </div>
+                    <div className="velora-sd-metric-trend neutral">Preserved official 3% platform fee</div>
+                  </div>
+                </div>
+
+                <div className="velora-sd-metric-card">
+                  <div className="velora-sd-metric-body">
+                    <p className="velora-sd-metric-label">Total Withdrawn / Settled</p>
+                    <div className="velora-sd-metric-val">
+                      {formatMoney(sellerFinancials ? sellerFinancials.withdrawn_amount : 0)}
+                    </div>
+                    <div className="velora-sd-metric-trend neutral">Completed bank payouts</div>
                   </div>
                 </div>
               </div>
 
+              {/* Settlement Notice */}
               <div style={{ marginTop: "16px", padding: "12px 16px", borderRadius: "10px", background: "rgba(212, 175, 55, 0.06)", border: "1px solid rgba(212, 175, 55, 0.2)", fontSize: "12px", color: "#8a7a40" }}>
-                Official settlement rule: Only orders with <strong>Delivered</strong> status are settled. Pending, Processing, Shipped, and Cancelled orders are excluded until successfully delivered.
+                <strong>Official Settlement Rule:</strong> Earnings are credited to your Available Wallet Balance upon order delivery. Pending orders are held safely in Pending Balance until fulfillment is completed. Minimum payout withdrawal threshold is ₹500.
               </div>
 
+              {/* 2. REQUEST PAYOUT SECTION */}
               <div className="velora-sd-card" style={{ marginTop: "24px" }}>
-                <h3 className="velora-sd-card-title">Settlement Bank Account</h3>
-                <p style={{ color: "#6b7280", fontSize: "13px", margin: "4px 0 20px 0" }}>
-                  Funds from completed store orders are routed directly to this verified bank account.
+                <h3 className="velora-sd-card-title">Request Bank Payout</h3>
+                <p style={{ color: "#6b7280", fontSize: "13px", margin: "4px 0 16px 0" }}>
+                  Withdraw your available settled earnings directly to your verified bank account.
                 </p>
+
+                {payoutReqError && (
+                  <div className="velora-sd-alert error" style={{ marginBottom: "16px" }}>{payoutReqError}</div>
+                )}
+                {payoutReqNotice && (
+                  <div className="velora-sd-alert success" style={{ marginBottom: "16px" }}>{payoutReqNotice}</div>
+                )}
+
+                {(() => {
+                  const avail = sellerFinancials ? sellerFinancials.available_balance : settlementMetrics.netSellerEarnings;
+                  const hasBank = Boolean(payoutAccount && payoutIfsc && payoutHolder);
+
+                  if (!hasBank) {
+                    return (
+                      <div style={{ padding: "16px", background: "#fef3c7", borderRadius: "8px", border: "1px solid #fde68a", color: "#92400e", fontSize: "13px" }}>
+                        Please configure and save your verified bank account details below before submitting a payout request.
+                      </div>
+                    );
+                  }
+
+                  if (avail < 500) {
+                    return (
+                      <div style={{ padding: "16px", background: "#f3f4f6", borderRadius: "8px", border: "1px solid #e5e7eb", color: "#4b5563", fontSize: "13px" }}>
+                        Your current available balance ({formatMoney(avail)}) is below the minimum required withdrawal threshold of <strong>₹500</strong>. Fulfill your pending orders to increase your available balance.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <form onSubmit={handleRequestPayout} style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
+                      <div className="velora-sd-form-group" style={{ flex: "1", minWidth: "200px", marginBottom: 0 }}>
+                        <label className="velora-sd-form-label">Withdrawal Amount (₹) *</label>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <input
+                            type="number"
+                            min="500"
+                            max={avail}
+                            step="1"
+                            required
+                            placeholder="Enter amount (min ₹500)"
+                            className="velora-sd-form-input"
+                            value={payoutReqAmount}
+                            onChange={(e) => setPayoutReqAmount(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="velora-sd-btn-secondary"
+                            onClick={() => setPayoutReqAmount(String(Math.floor(avail)))}
+                            style={{ whiteSpace: "nowrap" }}
+                          >
+                            Max ({formatMoney(avail)})
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={payoutReqLoading || !payoutReqAmount || Number(payoutReqAmount) < 500 || Number(payoutReqAmount) > avail}
+                        className="velora-sd-btn-primary"
+                        style={{ height: "42px" }}
+                      >
+                        {payoutReqLoading ? "Submitting Request..." : "Submit Payout Request"}
+                      </button>
+                    </form>
+                  );
+                })()}
+              </div>
+
+              {/* 3. SETTLEMENT BANK ACCOUNT CARD */}
+              <div className="velora-sd-card" style={{ marginTop: "24px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+                  <div>
+                    <h3 className="velora-sd-card-title">Settlement Bank Account Destination</h3>
+                    <p style={{ color: "#6b7280", fontSize: "13px", margin: "4px 0 16px 0" }}>
+                      Funds from completed store orders are routed directly to this verified bank account.
+                    </p>
+                  </div>
+                  {payoutAccount && (
+                    <div style={{ padding: "6px 12px", background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.3)", borderRadius: "20px", fontSize: "12px", color: "#059669", fontWeight: "600" }}>
+                      ✓ Bank Account Configured
+                    </div>
+                  )}
+                </div>
 
                 <form onSubmit={handleSavePayout} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                   <div className="velora-sd-form-group">
@@ -2373,6 +2641,11 @@ export default function SellerDashboard() {
                       onChange={(e) => setPayoutAccount(e.target.value)}
                       placeholder="e.g. 50100234567890"
                     />
+                    {payoutAccount && payoutAccount.length >= 4 && (
+                      <span style={{ fontSize: "11px", color: "#6b7280", marginTop: "4px", display: "block" }}>
+                        Masked Preview: •••• •••• {payoutAccount.slice(-4)}
+                      </span>
+                    )}
                   </div>
 
                   <div className="velora-sd-form-group">
@@ -2393,6 +2666,146 @@ export default function SellerDashboard() {
                     </button>
                   </div>
                 </form>
+              </div>
+
+              {/* 4. PAYOUT REQUESTS HISTORY TABLE */}
+              <div className="velora-sd-card" style={{ marginTop: "24px" }}>
+                <h3 className="velora-sd-card-title">Payout Requests History</h3>
+                <p style={{ color: "#6b7280", fontSize: "13px", margin: "4px 0 16px 0" }}>
+                  Status and transaction references for your withdrawal requests.
+                </p>
+
+                {sellerPayouts.length === 0 ? (
+                  <div className="velora-sd-empty-state" style={{ padding: "30px 20px" }}>
+                    <p className="velora-sd-empty-desc">No payout requests submitted yet. When you request a payout, its processing status and UTR will appear here.</p>
+                  </div>
+                ) : (
+                  <div className="velora-sd-table-wrap">
+                    <table className="velora-sd-table">
+                      <thead>
+                        <tr>
+                          <th>Reference</th>
+                          <th>Requested Date</th>
+                          <th>Amount</th>
+                          <th>Destination</th>
+                          <th>Bank UTR / Ref</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sellerPayouts.map((p) => {
+                          const statusBg =
+                            p.status === "completed"
+                              ? "#10b981"
+                              : p.status === "rejected" || p.status === "failed"
+                              ? "#ef4444"
+                              : "#f59e0b";
+                          return (
+                            <tr key={p.id}>
+                              <td>
+                                <strong style={{ fontFamily: "monospace", fontSize: "12px" }}>{p.payout_ref}</strong>
+                              </td>
+                              <td style={{ fontSize: "12px", color: "#6b7280" }}>
+                                {timeAgo(p.requested_at)}
+                              </td>
+                              <td>
+                                <strong>{formatMoney(p.amount)}</strong>
+                              </td>
+                              <td style={{ fontSize: "12px" }}>
+                                <div>{p.bank_name}</div>
+                                <div style={{ color: "#6b7280" }}>{p.bank_account_number}</div>
+                              </td>
+                              <td style={{ fontSize: "12px" }}>
+                                {p.utr_reference ? (
+                                  <span style={{ fontFamily: "monospace", color: "#059669" }}>{p.utr_reference}</span>
+                                ) : (
+                                  <span style={{ color: "#9ca3af" }}>Pending transfer</span>
+                                )}
+                              </td>
+                              <td>
+                                <span
+                                  className="velora-sd-status-badge"
+                                  style={{
+                                    background: statusBg,
+                                    color: "#fff",
+                                    textTransform: "capitalize",
+                                    padding: "3px 8px",
+                                    borderRadius: "12px",
+                                    fontSize: "11px"
+                                  }}
+                                >
+                                  {p.status}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* 5. IMMUTABLE FINANCIAL LEDGER / TRANSACTIONS TABLE */}
+              <div className="velora-sd-card" style={{ marginTop: "24px" }}>
+                <h3 className="velora-sd-card-title">Immutable Financial Ledger</h3>
+                <p style={{ color: "#6b7280", fontSize: "13px", margin: "4px 0 16px 0" }}>
+                  Verified cryptographic ledger recording all credits, debits, order settlements and refunds.
+                </p>
+
+                {sellerTransactions.length === 0 ? (
+                  <div className="velora-sd-empty-state" style={{ padding: "30px 20px" }}>
+                    <p className="velora-sd-empty-desc">No ledger transactions recorded yet. Delivered store orders and payout settlements will appear here.</p>
+                  </div>
+                ) : (
+                  <div className="velora-sd-table-wrap">
+                    <table className="velora-sd-table">
+                      <thead>
+                        <tr>
+                          <th>Transaction Ref</th>
+                          <th>Date</th>
+                          <th>Type</th>
+                          <th>Entry</th>
+                          <th>Amount</th>
+                          <th>Status</th>
+                          <th>Description</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sellerTransactions.map((tx) => {
+                          const isCredit = tx.entry_type === "CREDIT";
+                          return (
+                            <tr key={tx.id}>
+                              <td style={{ fontFamily: "monospace", fontSize: "11px" }}>{tx.transaction_ref}</td>
+                              <td style={{ fontSize: "12px", color: "#6b7280" }}>{timeAgo(tx.created_at)}</td>
+                              <td>
+                                <span style={{ fontSize: "11px", fontWeight: "600", padding: "2px 6px", borderRadius: "4px", background: "#f3f4f6" }}>
+                                  {tx.transaction_type}
+                                </span>
+                              </td>
+                              <td>
+                                <span style={{ fontWeight: "700", color: isCredit ? "#059669" : "#dc2626" }}>
+                                  {isCredit ? "+ CREDIT" : "- DEBIT"}
+                                </span>
+                              </td>
+                              <td>
+                                <strong style={{ color: isCredit ? "#059669" : "#dc2626" }}>
+                                  {formatMoney(tx.amount)}
+                                </strong>
+                              </td>
+                              <td>
+                                <span style={{ fontSize: "11px", color: "#059669", textTransform: "capitalize" }}>
+                                  {tx.status}
+                                </span>
+                              </td>
+                              <td style={{ fontSize: "12px", color: "#4b5563" }}>{tx.description}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </section>
           )}

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import multer from "multer";
 import { createSellerAuthenticator } from "./auth.js";
 import { calculatePlatformFee, normalizeOrderFees } from "./fees.js";
+import { recordOrderDeliverySettlement } from "./financials.js";
 
 const PRODUCTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PRODUCT_UPLOAD_DIR = path.join(PRODUCTS_DIR, "uploads", "products");
@@ -626,6 +627,10 @@ export function registerProductRoutes(app, db, jwtSecret) {
           SET status = ?
           WHERE id = ? AND store_id = ?
         `).run(status, id, store.id);
+      }
+
+      if (status === "Delivered") {
+        recordOrderDeliverySettlement(db, id);
       }
 
       const updated = db.prepare(`

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import multer from "multer";
 import { createSellerAuthenticator } from "./auth.js";
 import { calculatePlatformFee, normalizeOrderFees } from "./fees.js";
+import { recordOrderDeliverySettlement } from "./financials.js";
 
 const SELLER_FEATURES_DIR = path.dirname(fileURLToPath(import.meta.url));
 const LOGO_UPLOAD_DIR = path.join(SELLER_FEATURES_DIR, "uploads", "logos");
@@ -372,6 +373,10 @@ export function registerSellerFeatureRoutes(app, db, jwtSecret) {
       if (updates.length > 0) {
         values.push(orderId, store.id);
         db.prepare(`UPDATE orders SET ${updates.join(", ")} WHERE id = ? AND store_id = ?`).run(...values);
+      }
+
+      if (status === "Delivered") {
+        recordOrderDeliverySettlement(db, orderId);
       }
 
       const updated = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId);

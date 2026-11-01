@@ -12,6 +12,8 @@ import { createAdminAuthenticator, registerAdminAuthRoutes } from "./adminAuth.j
 import { registerSellerRegistrationRoutes } from "./sellerRegistration.js";
 import { initSellerFeaturesDatabase, registerSellerFeatureRoutes } from "./sellerFeatures.js";
 import { PLATFORM_FEE_RATE, calculatePlatformFee, normalizeOrderFees } from "./fees.js";
+import { registerPaymentRoutes } from "./payments.js";
+import { initFinancialDatabase, registerFinancialRoutes, recordOrderDeliverySettlement } from "./financials.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,7 +42,14 @@ const app = express();
 const PORT = 5000;
 
 app.use(cors());
-app.use(express.json({ limit: "1mb" }));
+app.use(
+  express.json({
+    limit: "2mb",
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    }
+  })
+);
 
 const uploadsDir = path.join(__dirname, "uploads");
 fs.mkdirSync(path.join(uploadsDir, "logos"), { recursive: true });
@@ -178,6 +187,8 @@ const authenticateAdmin = createAdminAuthenticator(ADMIN_SECRET);
 // Seller product routes and public store routes
 registerProductRoutes(app, db, JWT_SECRET);
 registerSellerFeatureRoutes(app, db, JWT_SECRET);
+registerPaymentRoutes(app, db);
+registerFinancialRoutes(app, db, JWT_SECRET, ADMIN_SECRET);
 
 // Home
 app.get("/", (req, res) => {
@@ -505,6 +516,10 @@ app.put("/api/orders/:id/status", authenticateAdmin, (req, res) => {
       `).run(status, id);
     }
 
+    if (status === "Delivered") {
+      recordOrderDeliverySettlement(db, id);
+    }
+
     const order = db.prepare(`
       SELECT *
       FROM orders
@@ -614,5 +629,10 @@ app.listen(PORT, () => {
   console.log("POST   /api/products");
   console.log("PUT    /api/products/:id");
   console.log("DELETE /api/products/:id");
+  console.log("GET    /api/payments/config");
+  console.log("POST   /api/payments/create-order");
+  console.log("POST   /api/payments/verify");
+  console.log("POST   /api/payments/cancel");
+  console.log("POST   /api/payments/fail");
   console.log("----------------------------------");
 });

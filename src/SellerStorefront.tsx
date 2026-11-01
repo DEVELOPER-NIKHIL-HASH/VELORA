@@ -1,5 +1,6 @@
 import { useState, useEffect, type CSSProperties, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { launchRazorpayPayment, type CreatePaymentOrderResponse } from "./services/razorpay";
 
 export type StoreProduct = {
   id: number;
@@ -82,6 +83,14 @@ export default function SellerStorefront({ slug }: { slug: string }) {
   const [checkoutError, setCheckoutError] = useState("");
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [placedOrderId, setPlacedOrderId] = useState<number | null>(null);
+  const [sandboxSim, setSandboxSim] = useState<{
+    orderId: number;
+    razorpay_order_id: string;
+    amount: number;
+    confirmSuccess: () => Promise<void>;
+    simulateFailure: () => Promise<void>;
+    simulateCancel: () => Promise<void>;
+  } | null>(null);
 
   const [couponInput, setCouponInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; amount: number } | null>(null);
@@ -239,9 +248,11 @@ export default function SellerStorefront({ slug }: { slug: string }) {
     const formData = new FormData(e.currentTarget);
     const customer_name = String(formData.get("name") || "").trim();
     const email = String(formData.get("email") || "").trim();
+    const address = String(formData.get("address") || "").trim();
 
     try {
-      const response = await fetch("/api/orders", {
+      // Step 1: Create payment order on backend (strictly calculated server-side in INR)
+      const response = await fetch("/api/payments/create-order", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -250,6 +261,7 @@ export default function SellerStorefront({ slug }: { slug: string }) {
         body: JSON.stringify({
           customer_name,
           email,
+          address,
           store_id: store.id,
           discount_code: appliedCoupon ? appliedCoupon.code : undefined,
           items: cart.map((item) => ({
@@ -259,27 +271,49 @@ export default function SellerStorefront({ slug }: { slug: string }) {
         }),
       });
 
-      const data = await response.json().catch(() => ({}));
+      const data: CreatePaymentOrderResponse = await response.json().catch(() => ({}));
 
-      if (!response.ok) {
-        throw new Error(data.message || `Order could not be processed (HTTP ${response.status}).`);
+      if (!response.ok || data.status !== "success") {
+        throw new Error(data.message || `Order payment initiation failed (HTTP ${response.status}).`);
       }
 
-      setPlacedOrderId(data.orderId);
-      setCart([]);
-      try {
-        localStorage.removeItem(cartStorageKey);
-      } catch {
-        // ignore
+      if (typeof data.orderId !== "number" || !Number.isFinite(data.orderId)) {
+        throw new Error("Server response missing valid order ID.");
       }
-      setCheckoutOpen(false);
-      setCartOpen(false);
-      setOrderSuccess(true);
+
+      // Step 2: Launch Razorpay Checkout
+      await launchRazorpayPayment({
+        paymentOrder: data,
+        storeName: store.name,
+        themeColor: currentTheme,
+        onSuccess: (verifyResult) => {
+          setPlacedOrderId(verifyResult.orderId);
+          setCart([]);
+          try {
+            localStorage.removeItem(cartStorageKey);
+          } catch {}
+          setCheckoutOpen(false);
+          setCartOpen(false);
+          setOrderSuccess(true);
+          setIsSubmitting(false);
+        },
+        onFailure: (err) => {
+          console.warn("Seller store payment error:", err);
+          setCheckoutError(err.message || "Payment could not be completed. Please retry.");
+          setIsSubmitting(false);
+        },
+        onDismiss: () => {
+          setIsSubmitting(false);
+        },
+        onShowSandboxSimulation: (simDetails) => {
+          setSandboxSim(simDetails);
+          setIsSubmitting(false);
+        },
+      });
     } catch (err) {
       setCheckoutError(
-        err instanceof Error ? err.message : "Failed to place order. Please check connection."
+        err instanceof Error ? err.message : "Failed to initiate payment. Please check connection."
       );
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -323,6 +357,13 @@ export default function SellerStorefront({ slug }: { slug: string }) {
   const currentTheme = resolveThemeColor(store.themeColor || store.theme_color);
   const storeLogo = (store.logoUrl || store.logo_url || "").trim();
 
+  const isSellerLoggedIn =
+    typeof window !== "undefined" &&
+    Boolean(sessionStorage.getItem("velora_seller_token")?.trim());
+  const backHref = isSellerLoggedIn ? "/seller" : "/";
+  const backTitle = isSellerLoggedIn ? "Return to Seller Dashboard" : "Return to VELORA Marketplace";
+  const backLabel = isSellerLoggedIn ? "Dashboard" : "VELORA";
+
   return (
     <div
       className="min-h-screen bg-[#0c0c0c] text-[#f2efe9] flex flex-col font-sans selection:bg-[var(--store-accent)] selection:text-black"
@@ -339,14 +380,14 @@ export default function SellerStorefront({ slug }: { slug: string }) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <a
-              href="/"
+              href={backHref}
               className="text-white/50 hover:text-white transition flex items-center gap-1.5 text-xs font-medium tracking-wider uppercase"
-              title="Return to VELORA Marketplace"
+              title={backTitle}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
-              <span className="hidden sm:inline">VELORA</span>
+              <span className="hidden sm:inline">{backLabel}</span>
             </a>
             <div className="h-4 w-[1px] bg-white/20 hidden sm:block" />
             <div className="flex items-center gap-3">
@@ -923,6 +964,13 @@ export default function SellerStorefront({ slug }: { slug: string }) {
                     <span>Total Due</span>
                     <span className="text-[var(--store-accent)]">{formatPrice(total)}</span>
                   </div>
+                  <div className="flex items-center justify-between pt-1 text-[11px] text-white/50">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
+                      Razorpay Gateway
+                    </span>
+                    <span className="text-[10px] text-[var(--store-accent)] font-medium uppercase tracking-wider">Secure INR</span>
+                  </div>
                 </div>
 
                 <button
@@ -936,10 +984,67 @@ export default function SellerStorefront({ slug }: { slug: string }) {
                       <span>Verifying & Placing Order...</span>
                     </>
                   ) : (
-                    <span>Confirm & Place Order ({formatPrice(total)})</span>
+                    <span>Pay with Razorpay ({formatPrice(total)})</span>
                   )}
                 </button>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Razorpay Sandbox Test Simulation Sheet */}
+      <AnimatePresence>
+        {sandboxSim && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="max-w-sm w-full bg-[#18181b] border border-[var(--store-accent)] rounded-2xl p-6 text-white text-center shadow-2xl"
+            >
+              <span className="inline-block px-2.5 py-1 rounded-full bg-[color-mix(in_srgb,var(--store-accent)_20%,transparent)] text-[var(--store-accent)] text-[10px] font-semibold tracking-wider uppercase mb-2">
+                Razorpay Test Sandbox
+              </span>
+              <h3 className="text-lg font-serif">Simulate Gateway Payment</h3>
+              <p className="text-xs text-white/60 mt-1">
+                Order #{sandboxSim.orderId} &middot; {formatPrice(sandboxSim.amount / 100)}
+              </p>
+              <div className="mt-5 space-y-2.5">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const confirm = sandboxSim.confirmSuccess;
+                    setSandboxSim(null);
+                    await confirm();
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition cursor-pointer"
+                >
+                  ✓ Simulate Payment Success
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const fail = sandboxSim.simulateFailure;
+                    setSandboxSim(null);
+                    await fail();
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-red-600/80 hover:bg-red-600 text-white text-xs font-medium transition cursor-pointer"
+                >
+                  ✕ Simulate Payment Failure
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const cancel = sandboxSim.simulateCancel;
+                    setSandboxSim(null);
+                    await cancel();
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 text-xs transition cursor-pointer"
+                >
+                  Cancel Payment
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
@@ -985,8 +1090,15 @@ export default function SellerStorefront({ slug }: { slug: string }) {
                   <span className="font-mono font-bold text-[var(--store-accent)]">#{placedOrderId}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-white/50">Status:</span>
-                  <span className="text-emerald-400 font-medium">Pending Fulfillment</span>
+                  <span className="text-white/50">Payment:</span>
+                  <span className="text-emerald-400 font-medium flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+                    Verified via Razorpay
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-white/50">Fulfillment:</span>
+                  <span className="text-white/80 font-medium">Queued for Delivery</span>
                 </div>
               </div>
 

@@ -13,6 +13,8 @@ type Order = {
   }[];
   created_at: string;
   status: "Pending" | "Processing" | "Shipped" | "Delivered" | "Cancelled";
+  payment_status?: string;
+  razorpay_order_id?: string;
 };
 
 const API_URL = "/api/orders";
@@ -129,6 +131,14 @@ export default function TrackOrder() {
             <div className="track-details">
               <p><span>Customer</span><strong>{order.customer_name}</strong></p>
               <p><span>Order date</span><strong>{order.created_at}</strong></p>
+              {order.payment_status && (
+                <p>
+                  <span>Payment</span>
+                  <strong style={{ color: order.payment_status === "Paid" ? "#10b981" : "#d97706" }}>
+                    {order.payment_status === "Paid" ? "✓ Paid via Razorpay" : order.payment_status}
+                  </strong>
+                </p>
+              )}
             </div>
 
             <h3>Items</h3>
