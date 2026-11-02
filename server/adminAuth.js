@@ -74,13 +74,13 @@ function getAdminEmailTransporter() {
 
 // In-memory OTP storage for admin password recovery
 // Key: resetSessionId -> { email, otpHashed, expiresAt, attempts, createdAt }
-const activeResetSessions = new Map();
+export const activeResetSessions = new Map();
 
 // Rate limit trackers
 // IP -> [timestamps]
-const otpRequestIpTracker = new Map();
+export const otpRequestIpTracker = new Map();
 // Email -> timestamp
-const otpRequestCooldownTracker = new Map();
+export const otpRequestCooldownTracker = new Map();
 
 function isRateLimitedByIp(ip) {
   const now = Date.now();
@@ -112,11 +112,11 @@ function isCooldownActive(email) {
   return false;
 }
 
-// Clean up expired reset sessions periodically
+// Clean up stale reset sessions periodically (older than 1 hour past expiration)
 function cleanExpiredSessions() {
   const now = Date.now();
   for (const [key, session] of activeResetSessions.entries()) {
-    if (now > session.expiresAt) {
+    if (now > session.expiresAt + 60 * 60 * 1000) {
       activeResetSessions.delete(key);
     }
   }
@@ -376,8 +376,12 @@ export function registerAdminAuthRoutes(app, adminSecret, initialPasswordHash) {
         );
 
       if (!emailMatches) {
-        // Return generic success without revealing non-existence
-        return res.json(genericSuccessResponse);
+        // Return generic success with dummy resetSessionId to prevent email enumeration
+        const dummyResetSessionId = crypto.randomBytes(32).toString("hex");
+        return res.json({
+          ...genericSuccessResponse,
+          resetSessionId: dummyResetSessionId
+        });
       }
 
       // Generate cryptographically secure 6-digit OTP

@@ -214,10 +214,19 @@ export default function AdminDashboard() {
 
   // Forgot Password (Login Screen) State
   const [forgotPasswordView, setForgotPasswordView] = useState(false);
+  const [forgotStep, setForgotStep] = useState<"request" | "reset">("request");
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState("");
   const [forgotSuccess, setForgotSuccess] = useState("");
+  const [resetSessionId, setResetSessionId] = useState("");
+  const [resetOtp, setResetOtp] = useState("");
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState("");
+  const [resetSuccess, setResetSuccess] = useState("");
+  const [smtpConfigured, setSmtpConfigured] = useState<boolean | null>(null);
 
   // Financial Management State
   const [overview, setOverview] = useState<AdminFinancialOverview | null>(null);
@@ -320,6 +329,21 @@ export default function AdminDashboard() {
     void loadFinancialData();
   }, [adminToken, loadOrders, loadFinancialData]);
 
+  useEffect(() => {
+    if (!adminToken && forgotPasswordView) {
+      fetch("/api/admin/forgot-password/status")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && typeof data.configured === "boolean") {
+            setSmtpConfigured(data.configured);
+          }
+        })
+        .catch(() => {
+          setSmtpConfigured(null);
+        });
+    }
+  }, [adminToken, forgotPasswordView]);
+
   async function handleAdminLogin() {
     setLoginLoading(true);
     setError("");
@@ -361,6 +385,16 @@ export default function AdminDashboard() {
     setConfirmPassword("");
     setChangePasswordError("");
     setChangePasswordSuccess("");
+    setForgotPasswordView(false);
+    setForgotStep("request");
+    setResetSessionId("");
+    setResetOtp("");
+    setResetNewPassword("");
+    setResetConfirmPassword("");
+    setResetError("");
+    setResetSuccess("");
+    setForgotError("");
+    setForgotSuccess("");
   }
 
   async function handleChangePassword(e: React.FormEvent) {
@@ -422,6 +456,8 @@ export default function AdminDashboard() {
     e.preventDefault();
     setForgotError("");
     setForgotSuccess("");
+    setResetError("");
+    setResetSuccess("");
 
     if (!recoveryEmail.trim()) {
       setForgotError("Please enter your admin recovery email.");
@@ -438,16 +474,75 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (!res.ok) {
         if (data.code === "SMTP_NOT_CONFIGURED") {
-          throw new Error("Password recovery is unavailable because SMTP delivery is not configured on the server. Please contact system administrator or configure server/.env.");
+          setSmtpConfigured(false);
+          throw new Error("Admin password recovery is unavailable because SMTP delivery or ADMIN_RECOVERY_EMAIL is not configured on the server. Please run: node server/reset-admin-password.js");
         }
         throw new Error(data.message || "Password reset request failed.");
       }
 
+      setResetSessionId(data.resetSessionId || "");
+      setForgotStep("reset");
       setForgotSuccess(data.message || "If a matching recovery email is registered, a single-use verification code has been dispatched.");
     } catch (err) {
       setForgotError(err instanceof Error ? err.message : "Password reset request failed.");
     } finally {
       setForgotLoading(false);
+    }
+  }
+
+  async function handleResetPasswordWithOtp(e: React.FormEvent) {
+    e.preventDefault();
+    setResetError("");
+    setResetSuccess("");
+
+    if (!resetOtp.trim()) {
+      setResetError("Please enter the 6-digit verification code.");
+      return;
+    }
+    if (resetNewPassword.length < 12) {
+      setResetError("New password must be at least 12 characters long.");
+      return;
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setResetError("New password and confirmation do not match.");
+      return;
+    }
+
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/admin/forgot-password/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resetSessionId,
+          otp: resetOtp.trim(),
+          newPassword: resetNewPassword,
+          confirmPassword: resetConfirmPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Password reset failed.");
+      }
+
+      setResetSuccess(
+        "Admin password successfully reset! Redirecting to login..."
+      );
+      setTimeout(() => {
+        setForgotPasswordView(false);
+        setForgotStep("request");
+        setResetSessionId("");
+        setResetOtp("");
+        setResetNewPassword("");
+        setResetConfirmPassword("");
+        setResetSuccess("");
+        setForgotSuccess("");
+        setNotice("Admin password reset successfully. Please log in with your new password.");
+      }, 2000);
+    } catch (err) {
+      setResetError(err instanceof Error ? err.message : "Password reset failed.");
+    } finally {
+      setResetLoading(false);
     }
   }
 
@@ -678,37 +773,134 @@ export default function AdminDashboard() {
           ) : (
             <>
               <h1>Admin Password Recovery</h1>
-              <p className="muted">Enter your verified admin recovery email to receive a single-use verification code.</p>
-              <form onSubmit={(event) => {
-                void handleForgotPasswordRequest(event);
-              }}>
-                <input
-                  type="email"
-                  className="admin-search"
-                  style={{ width: "100%", marginBottom: "14px" }}
-                  placeholder="admin-recovery@example.com"
-                  value={recoveryEmail}
-                  onChange={(event) => setRecoveryEmail(event.target.value)}
-                  required
-                />
-                <button className="admin-button gold" style={{ width: "100%" }} type="submit" disabled={forgotLoading}>
-                  {forgotLoading ? "Requesting OTP..." : "Send Verification Code"}
-                </button>
-              </form>
-              {forgotError && <p className="admin-error" style={{ color: "#ef4444", marginTop: "12px", fontSize: "13px" }}>{forgotError}</p>}
-              {forgotSuccess && <p className="admin-success" style={{ color: "#10b981", marginTop: "12px", fontSize: "13px" }}>{forgotSuccess}</p>}
+              {smtpConfigured === false && (
+                <div style={{ padding: "12px", background: "rgba(245, 158, 11, 0.1)", border: "1px solid #f59e0b", borderRadius: "8px", color: "#f59e0b", fontSize: "12px", marginBottom: "16px", lineHeight: "1.5" }}>
+                  <strong>SMTP Recovery Not Configured:</strong> Real email delivery or ADMIN_RECOVERY_EMAIL is unconfigured on the server.
+                  <div style={{ marginTop: "6px" }}>
+                    To reset directly from server terminal, run:
+                  </div>
+                  <code style={{ display: "inline-block", background: "#090a0d", padding: "4px 8px", borderRadius: "4px", color: "#d4af65", marginTop: "4px" }}>
+                    node server/reset-admin-password.js
+                  </code>
+                </div>
+              )}
+
+              {forgotStep === "request" ? (
+                <>
+                  <p className="muted">Enter your verified admin recovery email to receive a single-use verification code.</p>
+                  <form onSubmit={handleForgotPasswordRequest}>
+                    <input
+                      type="email"
+                      className="admin-search"
+                      style={{ width: "100%", marginBottom: "14px" }}
+                      placeholder="admin-recovery@example.com"
+                      value={recoveryEmail}
+                      onChange={(event) => setRecoveryEmail(event.target.value)}
+                      required
+                    />
+                    <button className="admin-button gold" style={{ width: "100%" }} type="submit" disabled={forgotLoading}>
+                      {forgotLoading ? "Requesting OTP..." : "Send Verification Code"}
+                    </button>
+                  </form>
+                  {forgotError && <p className="admin-error" style={{ color: "#ef4444", marginTop: "12px", fontSize: "13px" }}>{forgotError}</p>}
+                  {forgotSuccess && <p className="admin-success" style={{ color: "#10b981", marginTop: "12px", fontSize: "13px" }}>{forgotSuccess}</p>}
+                </>
+              ) : (
+                <>
+                  <p className="muted">Enter the 6-digit verification code sent to your recovery email, and enter your new password.</p>
+                  <form onSubmit={handleResetPasswordWithOtp}>
+                    <div style={{ marginBottom: "12px" }}>
+                      <label style={{ display: "block", fontSize: "11px", color: "#9a9ba5", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>
+                        6-Digit Verification Code
+                      </label>
+                      <input
+                        type="text"
+                        className="admin-search"
+                        style={{ width: "100%", letterSpacing: "4px", fontWeight: "bold", textAlign: "center" }}
+                        placeholder="123456"
+                        maxLength={6}
+                        value={resetOtp}
+                        onChange={(event) => setResetOtp(event.target.value)}
+                        required
+                      />
+                    </div>
+                    <div style={{ marginBottom: "12px" }}>
+                      <label style={{ display: "block", fontSize: "11px", color: "#9a9ba5", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>
+                        New Password (Min 12 Characters)
+                      </label>
+                      <input
+                        type="password"
+                        className="admin-search"
+                        style={{ width: "100%" }}
+                        placeholder="Enter new strong password"
+                        value={resetNewPassword}
+                        onChange={(event) => setResetNewPassword(event.target.value)}
+                        required
+                      />
+                      <div style={{ marginTop: "4px", fontSize: "11px", color: resetNewPassword.length >= 12 ? "#10b981" : "#9a9ba5" }}>
+                        {resetNewPassword.length >= 12 ? "✓ Meets minimum length" : `Length: ${resetNewPassword.length}/12 minimum`}
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: "16px" }}>
+                      <label style={{ display: "block", fontSize: "11px", color: "#9a9ba5", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>
+                        Confirm New Password
+                      </label>
+                      <input
+                        type="password"
+                        className="admin-search"
+                        style={{ width: "100%" }}
+                        placeholder="Re-enter new password"
+                        value={resetConfirmPassword}
+                        onChange={(event) => setResetConfirmPassword(event.target.value)}
+                        required
+                      />
+                      {resetConfirmPassword && (
+                        <div style={{ marginTop: "4px", fontSize: "11px", color: resetNewPassword === resetConfirmPassword ? "#10b981" : "#ef4444" }}>
+                          {resetNewPassword === resetConfirmPassword ? "✓ Passwords match" : "✗ Passwords do not match"}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      className="admin-button gold"
+                      style={{ width: "100%" }}
+                      type="submit"
+                      disabled={resetLoading || !resetOtp || resetNewPassword.length < 12 || resetNewPassword !== resetConfirmPassword}
+                    >
+                      {resetLoading ? "Resetting Password..." : "Reset Admin Password"}
+                    </button>
+                  </form>
+                  {resetError && <p className="admin-error" style={{ color: "#ef4444", marginTop: "12px", fontSize: "13px" }}>{resetError}</p>}
+                  {resetSuccess && <p className="admin-success" style={{ color: "#10b981", marginTop: "12px", fontSize: "13px" }}>{resetSuccess}</p>}
+                </>
+              )}
+
               <div style={{ marginTop: "16px", textAlign: "center", display: "flex", gap: "10px", justifyContent: "center" }}>
-                <button
-                  type="button"
-                  className="admin-button secondary"
-                  onClick={() => {
-                    setForgotPasswordView(false);
-                    setForgotError("");
-                    setForgotSuccess("");
-                  }}
-                >
-                  ← Back to Login
-                </button>
+                {forgotStep === "reset" ? (
+                  <button
+                    type="button"
+                    className="admin-button secondary"
+                    onClick={() => {
+                      setForgotStep("request");
+                      setResetError("");
+                      setResetSuccess("");
+                    }}
+                  >
+                    ← Back to Email
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="admin-button secondary"
+                    onClick={() => {
+                      setForgotPasswordView(false);
+                      setForgotStep("request");
+                      setForgotError("");
+                      setForgotSuccess("");
+                    }}
+                  >
+                    ← Back to Login
+                  </button>
+                )}
                 <a className="admin-button secondary" href="/">Back to Store</a>
               </div>
             </>
