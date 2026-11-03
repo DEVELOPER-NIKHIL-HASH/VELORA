@@ -1,5 +1,6 @@
 import "./AdminDashboard.css";
 import { useCallback, useEffect, useState } from "react";
+import PasswordInput from "./PasswordInput";
 
 type OrderStatus =
   | "Pending"
@@ -737,8 +738,8 @@ export default function AdminDashboard() {
                 event.preventDefault();
                 void handleAdminLogin();
               }}>
-                <input
-                  type="password"
+                <PasswordInput
+                  variant="admin"
                   className="admin-search"
                   style={{ width: "100%", marginBottom: "14px" }}
                   placeholder="Admin password"
@@ -828,8 +829,8 @@ export default function AdminDashboard() {
                       <label style={{ display: "block", fontSize: "11px", color: "#9a9ba5", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>
                         New Password (Min 12 Characters)
                       </label>
-                      <input
-                        type="password"
+                      <PasswordInput
+                        variant="admin"
                         className="admin-search"
                         style={{ width: "100%" }}
                         placeholder="Enter new strong password"
@@ -845,8 +846,8 @@ export default function AdminDashboard() {
                       <label style={{ display: "block", fontSize: "11px", color: "#9a9ba5", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "1px" }}>
                         Confirm New Password
                       </label>
-                      <input
-                        type="password"
+                      <PasswordInput
+                        variant="admin"
                         className="admin-search"
                         style={{ width: "100%" }}
                         placeholder="Re-enter new password"
@@ -1698,8 +1699,8 @@ export default function AdminDashboard() {
                 <label style={{ display: "block", fontSize: "12px", color: "#9a9ba5", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "1px" }}>
                   Current Password
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
+                  variant="admin"
                   className="admin-search"
                   style={{ width: "100%" }}
                   placeholder="Enter current admin password"
@@ -1713,8 +1714,8 @@ export default function AdminDashboard() {
                 <label style={{ display: "block", fontSize: "12px", color: "#9a9ba5", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "1px" }}>
                   New Password (Minimum 12 characters)
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
+                  variant="admin"
                   className="admin-search"
                   style={{ width: "100%" }}
                   placeholder="Enter new strong password"
@@ -1731,8 +1732,8 @@ export default function AdminDashboard() {
                 <label style={{ display: "block", fontSize: "12px", color: "#9a9ba5", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "1px" }}>
                   Confirm New Password
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
+                  variant="admin"
                   className="admin-search"
                   style={{ width: "100%" }}
                   placeholder="Re-enter new password"

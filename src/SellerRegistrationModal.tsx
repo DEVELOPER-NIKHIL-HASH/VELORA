@@ -1,6 +1,7 @@
 import { GoogleLogin } from '@react-oauth/google';
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import PasswordInput from "./PasswordInput";
 
 type Step = "ACCOUNT" | "EMAIL" | "MOBILE" | "COMPLETE";
 
@@ -539,28 +540,28 @@ async function handleGoogleLoginSuccess(credentialResponse: { credential?: strin
                   <label className="block text-xs uppercase tracking-wider opacity-60 mb-1">
                     Password *
                   </label>
-                  <input
+                  <PasswordInput
+                    variant="tailwind"
                     required
-                    type="password"
                     minLength={8}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Min. 8 characters"
-                    className="w-full rounded-xl border border-current/15 bg-current/[0.03] px-4 py-3 text-xs outline-none focus:border-[#D4AF37] transition"
+                    inputClassName="w-full rounded-xl border border-current/15 bg-current/[0.03] px-4 py-3 text-xs outline-none focus:border-[#D4AF37] transition"
                   />
                 </div>
                 <div>
                   <label className="block text-xs uppercase tracking-wider opacity-60 mb-1">
                     Confirm Password *
                   </label>
-                  <input
+                  <PasswordInput
+                    variant="tailwind"
                     required
-                    type="password"
                     minLength={8}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter password"
-                    className="w-full rounded-xl border border-current/15 bg-current/[0.03] px-4 py-3 text-xs outline-none focus:border-[#D4AF37] transition"
+                    inputClassName="w-full rounded-xl border border-current/15 bg-current/[0.03] px-4 py-3 text-xs outline-none focus:border-[#D4AF37] transition"
                   />
                 </div>
               </div>

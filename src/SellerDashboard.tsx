@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import "./SellerDashboard.css";
+import PasswordInput from "./PasswordInput";
 
 import headphonesImg from "./assets/products/headphones.jpg";
 import watchImg from "./assets/products/watch.jpg";
@@ -1234,8 +1235,8 @@ export default function SellerDashboard() {
               <label className="velora-sd-form-label" style={{ color: "#fff" }}>
                 Password
               </label>
-              <input
-                type="password"
+              <PasswordInput
+                variant="seller"
                 required
                 className="velora-sd-form-input"
                 style={{ background: "#212228", color: "#fff", borderColor: "#33353d" }}
@@ -3331,21 +3332,19 @@ export default function SellerDashboard() {
                   <form onSubmit={handleChangePassword}>
                     <div className="velora-sd-form-group">
                       <label className="velora-sd-form-label">Current Password *</label>
-                      <input
-                        type="password"
+                      <PasswordInput
+                        variant="seller"
                         required
-                        className="velora-sd-form-input"
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
                       />
                     </div>
                     <div className="velora-sd-form-group">
                       <label className="velora-sd-form-label">New Password (min 8 characters) *</label>
-                      <input
-                        type="password"
+                      <PasswordInput
+                        variant="seller"
                         required
                         minLength={8}
-                        className="velora-sd-form-input"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
                       />
@@ -3874,10 +3873,9 @@ export default function SellerDashboard() {
                   </div>
                   <div className="velora-sd-form-group">
                     <label className="velora-sd-form-label">Shiprocket API Token *</label>
-                    <input
-                      type="password"
+                    <PasswordInput
+                      variant="seller"
                       required
-                      className="velora-sd-form-input"
                       value={pluginConfigInput.token || ""}
                       onChange={(e) => setPluginConfigInput({ ...pluginConfigInput, token: e.target.value })}
                     />
@@ -3900,10 +3898,9 @@ export default function SellerDashboard() {
                   </div>
                   <div className="velora-sd-form-group">
                     <label className="velora-sd-form-label">Razorpay Key Secret *</label>
-                    <input
-                      type="password"
+                    <PasswordInput
+                      variant="seller"
                       required
-                      className="velora-sd-form-input"
                       value={pluginConfigInput.key_secret || ""}
                       onChange={(e) => setPluginConfigInput({ ...pluginConfigInput, key_secret: e.target.value })}
                     />
