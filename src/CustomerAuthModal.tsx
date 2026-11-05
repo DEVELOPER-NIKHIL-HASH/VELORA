@@ -4,13 +4,12 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   type CustomerUser,
   type CustomerOrder,
-  type ProviderStatus,
   setCustomerSession,
   clearCustomerSession,
   fetchCurrentCustomer
 } from "./services/customerAuth";
 
-type AuthMode = "email" | "mobile" | "google";
+type AuthMode = "email" | "google";
 type AuthStep = "input" | "verify" | "success" | "profile";
 
 type Props = {
@@ -36,7 +35,6 @@ export default function CustomerAuthModal({
 
   // Form inputs
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [otpDigits, setOtpDigits] = useState<string[]>(["", "", "", "", "", ""]);
 
@@ -54,7 +52,6 @@ export default function CustomerAuthModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successNotice, setSuccessNotice] = useState("");
-  const [providers, setProviders] = useState<ProviderStatus | null>(null);
 
   const otpInputsRef = useRef<(HTMLInputElement | null)[]>([]);
   const firstInputRef = useRef<HTMLInputElement>(null);
@@ -69,20 +66,6 @@ export default function CustomerAuthModal({
       setStep("input");
     }
   }, [initialCustomer, isOpen]);
-
-  // Fetch provider configuration status when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      fetch(`${API_BASE}/providers`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data?.providers) {
-            setProviders(data.providers);
-          }
-        })
-        .catch(() => {});
-    }
-  }, [isOpen]);
 
   // Handle resend countdown timer
   useEffect(() => {
@@ -138,21 +121,13 @@ export default function CustomerAuthModal({
         setError("Please enter a valid email address.");
         return;
       }
-    } else if (mode === "mobile") {
-      const cleanPhone = phone.trim().replace(/[\s\-()]/g, "");
-      if (!cleanPhone || !/^\+?[0-9]{10,15}$/.test(cleanPhone)) {
-        setError("Please enter a valid mobile number with country code (e.g. +91 98765 43210).");
-        return;
-      }
     }
 
     setLoading(true);
 
     try {
-      const endpoint = mode === "email" ? `${API_BASE}/email/request-otp` : `${API_BASE}/mobile/request-otp`;
-      const payload = mode === "email"
-        ? { email: email.trim(), name: name.trim() || undefined }
-        : { phone: phone.trim(), name: name.trim() || undefined };
+      const endpoint = `${API_BASE}/email/request-otp`;
+      const payload = { email: email.trim(), name: name.trim() || undefined };
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -163,9 +138,6 @@ export default function CustomerAuthModal({
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        if (data.code === "SMS_NOT_CONFIGURED") {
-          throw new Error("SMS delivery service is not configured. Required environment variables: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER in server/.env.");
-        }
         if (data.code === "SMTP_NOT_CONFIGURED") {
           throw new Error("Email delivery service is not configured. Please check SMTP settings in server/.env.");
         }
@@ -173,11 +145,11 @@ export default function CustomerAuthModal({
       }
 
       setSessionId(data.sessionId);
-      setMaskedTarget(data.targetMasked || (mode === "email" ? email : phone));
+      setMaskedTarget(data.targetMasked || email);
       setCooldown(data.resendCooldown || 60);
       setAttemptsRemaining(null);
       setOtpDigits(["", "", "", "", "", ""]);
-      setSuccessNotice(data.message || `Verification code sent to your ${mode === "email" ? "email" : "mobile phone"}.`);
+      setSuccessNotice(data.message || "Verification code sent to your email.");
       setStep("verify");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed. Please try again.");
@@ -201,7 +173,7 @@ export default function CustomerAuthModal({
     setLoading(true);
 
     try {
-      const endpoint = mode === "email" ? `${API_BASE}/email/verify-otp` : `${API_BASE}/mobile/verify-otp`;
+      const endpoint = `${API_BASE}/email/verify-otp`;
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -247,7 +219,7 @@ export default function CustomerAuthModal({
     setLoading(true);
 
     try {
-      const endpoint = mode === "email" ? `${API_BASE}/email/resend-otp` : `${API_BASE}/mobile/resend-otp`;
+      const endpoint = `${API_BASE}/email/resend-otp`;
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -590,29 +562,6 @@ export default function CustomerAuthModal({
 
                   <button
                     type="button"
-                    onClick={() => handleTabSwitch("mobile")}
-                    className={`flex-1 pb-3 text-center transition-all relative ${
-                      mode === "mobile"
-                        ? "text-[#D4AF37] font-semibold"
-                        : isDark ? "text-white/50 hover:text-white" : "text-black/50 hover:text-black"
-                    }`}
-                  >
-                    <span className="flex items-center justify-center gap-1.5">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                      </svg>
-                      Mobile OTP
-                    </span>
-                    {mode === "mobile" && (
-                      <motion.div
-                        layoutId="activeTabUnderline"
-                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#D4AF37]"
-                      />
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={() => handleTabSwitch("google")}
                     className={`flex-1 pb-3 text-center transition-all relative ${
                       mode === "google"
@@ -651,7 +600,7 @@ export default function CustomerAuthModal({
                 </div>
               )}
 
-              {/* STEP 1: INPUT DETAILS (EMAIL OR MOBILE) */}
+              {/* STEP 1: INPUT DETAILS (EMAIL) */}
               {step === "input" && (
                 <div>
                   {mode === "google" ? (
@@ -671,55 +620,24 @@ export default function CustomerAuthModal({
                     </div>
                   ) : (
                     <form onSubmit={handleRequestOtp} className="space-y-4">
-                      {mode === "email" ? (
-                        <div>
-                          <label className={`block text-xs uppercase tracking-wider mb-1.5 font-medium ${isDark ? "text-white/70" : "text-black/70"}`}>
-                            Email Address <span className="text-[#D4AF37]">*</span>
-                          </label>
-                          <input
-                            ref={firstInputRef}
-                            type="email"
-                            required
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="e.g. alexander@atelier.com"
-                            className={`w-full px-4 py-3 rounded-xl border text-sm transition outline-none ${
-                              isDark
-                                ? "bg-white/5 border-white/15 focus:border-[#D4AF37] text-white placeholder-white/30"
-                                : "bg-black/5 border-black/15 focus:border-[#D4AF37] text-black placeholder-black/30"
-                            }`}
-                          />
-                        </div>
-                      ) : (
-                        <div>
-                          <label className={`block text-xs uppercase tracking-wider mb-1.5 font-medium ${isDark ? "text-white/70" : "text-black/70"}`}>
-                            Mobile Number <span className="text-[#D4AF37]">*</span>
-                          </label>
-                          <input
-                            ref={firstInputRef}
-                            type="tel"
-                            required
-                            value={phone}
-                            onChange={(e) => setPhone(e.target.value)}
-                            placeholder="e.g. +91 98765 43210"
-                            className={`w-full px-4 py-3 rounded-xl border text-sm transition outline-none ${
-                              isDark
-                                ? "bg-white/5 border-white/15 focus:border-[#D4AF37] text-white placeholder-white/30"
-                                : "bg-black/5 border-black/15 focus:border-[#D4AF37] text-black placeholder-black/30"
-                            }`}
-                          />
-                          {providers && !providers.sms.configured && (
-                            <div className="mt-2.5 p-3 rounded-lg border border-amber-500/25 bg-amber-500/10 text-amber-300 text-[11px] leading-relaxed flex items-start gap-2">
-                              <svg className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              <div>
-                                <strong>SMS Provider Setup Required:</strong> Twilio credentials (<code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code>, <code>TWILIO_PHONE_NUMBER</code>) must be configured in <code>server/.env</code> for live SMS delivery.
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      <div>
+                        <label className={`block text-xs uppercase tracking-wider mb-1.5 font-medium ${isDark ? "text-white/70" : "text-black/70"}`}>
+                          Email Address <span className="text-[#D4AF37]">*</span>
+                        </label>
+                        <input
+                          ref={firstInputRef}
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="e.g. alexander@atelier.com"
+                          className={`w-full px-4 py-3 rounded-xl border text-sm transition outline-none ${
+                            isDark
+                              ? "bg-white/5 border-white/15 focus:border-[#D4AF37] text-white placeholder-white/30"
+                              : "bg-black/5 border-black/15 focus:border-[#D4AF37] text-black placeholder-black/30"
+                          }`}
+                        />
+                      </div>
 
                       {/* Optional Name field */}
                       <div>
@@ -741,9 +659,9 @@ export default function CustomerAuthModal({
 
                       <button
                         type="submit"
-                        disabled={loading || (mode === "mobile" && providers ? !providers.sms.configured : false)}
+                        disabled={loading}
                         className={`w-full py-3.5 px-6 rounded-xl text-xs font-semibold uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg ${
-                          loading || (mode === "mobile" && providers && !providers.sms.configured)
+                          loading
                             ? "bg-[#D4AF37]/50 text-black/50 cursor-not-allowed"
                             : "bg-[#D4AF37] hover:bg-[#E5C158] text-black cursor-pointer active:scale-[0.99]"
                         }`}
@@ -780,7 +698,7 @@ export default function CustomerAuthModal({
                         isDark ? "text-white/50 hover:text-white" : "text-black/50 hover:text-black"
                       }`}
                     >
-                      &larr; Change {mode === "email" ? "email" : "phone number"}
+                      &larr; Change email
                     </button>
                   </div>
 
