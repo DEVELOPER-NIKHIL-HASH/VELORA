@@ -291,7 +291,9 @@ export default function SellerStorefront({ slug }: { slug: string }) {
           setCart([]);
           try {
             localStorage.removeItem(cartStorageKey);
-          } catch {}
+          } catch (storageErr) {
+            console.debug("Cart storage clean error:", storageErr);
+          }
           setCheckoutOpen(false);
           setCartOpen(false);
           setOrderSuccess(true);

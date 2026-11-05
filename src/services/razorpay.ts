@@ -2,9 +2,31 @@
  * VELORA Phase 5 — Razorpay Payment Gateway Integration Service
  */
 
+export type RazorpaySuccessResponse = {
+  razorpay_order_id?: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+};
+
+export type RazorpayFailureResponse = {
+  error?: {
+    code?: string;
+    description?: string;
+    source?: string;
+    step?: string;
+    reason?: string;
+    metadata?: Record<string, unknown>;
+  };
+};
+
+export type RazorpayInstance = {
+  open: () => void;
+  on: (event: string, handler: (response: RazorpayFailureResponse) => void) => void;
+};
+
 declare global {
   interface Window {
-    Razorpay?: any;
+    Razorpay?: new (options: Record<string, unknown>) => RazorpayInstance;
   }
 }
 
@@ -33,7 +55,7 @@ export type VerifyPaymentResponse = {
   orderId: number;
   paymentId: string;
   already_verified?: boolean;
-  order?: any;
+  order?: Record<string, unknown>;
 };
 
 /**
@@ -176,7 +198,9 @@ export async function launchRazorpayPayment({
               reason: "Payment cancelled by user in sandbox sheet"
             })
           });
-        } catch {}
+        } catch (cancelErr) {
+          console.debug("Cancel sandbox notify error:", cancelErr);
+        }
         if (onDismiss) onDismiss();
       }
     });
@@ -203,7 +227,7 @@ export async function launchRazorpayPayment({
       description: `Order #${paymentOrder.orderId} Payment`,
       image: "/favicon.svg",
       order_id: paymentOrder.razorpay_order_id,
-      handler: async function (response: any) {
+      handler: async function (response: RazorpaySuccessResponse) {
         try {
           // Send payment response to backend for cryptographic signature verification
           const verifyRes = await fetch("/api/payments/verify", {
@@ -272,7 +296,7 @@ export async function launchRazorpayPayment({
 
     const rzpInstance = new window.Razorpay(options);
 
-    rzpInstance.on("payment.failed", async function (response: any) {
+    rzpInstance.on("payment.failed", async function (response: RazorpayFailureResponse) {
       console.warn("Razorpay payment failed:", response.error);
 
       try {

@@ -56,6 +56,14 @@ export default function CustomerAuthModal({
   const otpInputsRef = useRef<(HTMLInputElement | null)[]>([]);
   const firstInputRef = useRef<HTMLInputElement>(null);
 
+  async function loadOrders() {
+    const profile = await fetchCurrentCustomer();
+    if (profile) {
+      setCurrentCustomer(profile.customer);
+      setCustomerOrders(profile.orders);
+    }
+  }
+
   // Sync with initialCustomer or fetch customer details
   useEffect(() => {
     if (initialCustomer) {
@@ -85,14 +93,6 @@ export default function CustomerAuthModal({
       setTimeout(() => otpInputsRef.current[0]?.focus(), 120);
     }
   }, [isOpen, step, mode]);
-
-  async function loadOrders() {
-    const profile = await fetchCurrentCustomer();
-    if (profile) {
-      setCurrentCustomer(profile.customer);
-      setCustomerOrders(profile.orders);
-    }
-  }
 
   const handleModalClose = () => {
     if (loading) return;
