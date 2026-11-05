@@ -3,7 +3,7 @@ import VeloraCursor from "./VeloraCursor"
 import VeloraImage from "./VeloraImage"
 
 import { AnimatePresence, motion } from "motion/react"
-import { useState, useEffect, useRef, type FormEvent, type ReactNode } from "react"
+import { useState, useEffect, useRef, useCallback, type FormEvent, type ReactNode } from "react"
 import AdminDashboard from "./AdminDashboard"
 import TrackOrder from "./TrackOrder"
 import SellerDashboard from "./SellerDashboard"
@@ -26,14 +26,76 @@ import backpack from "./assets/products/backpack.jpg"
 
 export type Product = {
   id: number
+  store_id?: number
   name: string
   category: string
+  subcategory?: string
   price: number
   oldPrice: number
   discount: number
   image: string
+  image_url?: string
+  stock?: number
   description: string
   details?: string[]
+  store_name?: string
+  store_slug?: string
+  is_featured?: number
+  is_active?: number
+}
+
+export type CategoryTaxonomy = {
+  name: string
+  count: number
+  subcategories: string[]
+}
+
+export type MarketplaceStore = {
+  id: number
+  name: string
+  slug: string
+  description?: string
+  logo_url?: string
+  banner_url?: string
+  products_count: number
+}
+
+export function mapBackendProduct(bp: any): Product {
+  const rawUrl = String(bp.image_url || bp.image || "").trim()
+  let resolvedImg = rawUrl
+  if (rawUrl.includes("headphones") || !rawUrl) resolvedImg = headphones
+  else if (rawUrl.includes("watch")) resolvedImg = watch
+  else if (rawUrl.includes("backpack")) resolvedImg = backpack
+
+  const price = Number(bp.price) || 0
+  const oldPrice = Number(bp.oldPrice) || (price > 0 ? Math.round(price * 1.45) : 0)
+  const discount = Number(bp.discount) || (oldPrice > price ? Math.round(((oldPrice - price) / oldPrice) * 100) : 0)
+
+  return {
+    id: Number(bp.id),
+    store_id: bp.store_id ? Number(bp.store_id) : undefined,
+    name: String(bp.name || "Velora Item"),
+    category: String(bp.category || "General"),
+    subcategory: bp.subcategory ? String(bp.subcategory) : "",
+    price,
+    oldPrice,
+    discount,
+    image: resolvedImg,
+    image_url: bp.image_url || resolvedImg,
+    stock: typeof bp.stock === "number" ? bp.stock : 10,
+    description: String(bp.description || ""),
+    details: Array.isArray(bp.details) && bp.details.length > 0
+      ? bp.details
+      : [
+          "Precision architectural craftsmanship",
+          "Artisanal quality assurance",
+          "Complimentary insured priority delivery"
+        ],
+    store_name: bp.store_name ? String(bp.store_name) : "VELORA Atelier",
+    store_slug: bp.store_slug ? String(bp.store_slug) : "velora-demo",
+    is_featured: bp.is_featured ? 1 : 0,
+    is_active: bp.is_active !== undefined ? Number(bp.is_active) : 1
+  }
 }
 
 export type CartItem = Product & { quantity: number }
@@ -52,10 +114,16 @@ const initialProducts: Product[] = [
     id: 1,
     name: "Aura Wireless Headphones",
     category: "Audio & Acoustics",
+    subcategory: "Wireless Headphones",
     price: 1999,
     oldPrice: 3499,
     discount: 43,
     image: headphones,
+    image_url: "/assets/products/headphones.jpg",
+    stock: 18,
+    is_featured: 1,
+    store_name: "VELORA Acoustic Atelier",
+    store_slug: "velora-demo",
     description: "Architectural acoustic engineering with an anodized aluminum finish and precision planar drivers.",
     details: ["Active Noise Cancellation", "42-hour continuous battery", "Custom gold-plated connectors"]
   },
@@ -63,10 +131,16 @@ const initialProducts: Product[] = [
     id: 2,
     name: "Minimal Smart Watch",
     category: "Horology & Wearables",
+    subcategory: "Smart Watches",
     price: 2499,
     oldPrice: 4999,
     discount: 50,
     image: watch,
+    image_url: "/assets/products/watch.jpg",
+    stock: 14,
+    is_featured: 1,
+    store_name: "Vane Horology",
+    store_slug: "velora-demo",
     description: "Understated horology featuring sapphire crystal, aerospace-grade titanium casing, and subtle haptics.",
     details: ["Sapphire crystal face", "Grade 5 titanium alloy", "Water-resistant to 50 meters"]
   },
@@ -74,10 +148,16 @@ const initialProducts: Product[] = [
     id: 3,
     name: "Premium Everyday Backpack",
     category: "Leather & Carry",
+    subcategory: "Backpacks",
     price: 1299,
     oldPrice: 2199,
     discount: 41,
     image: backpack,
+    image_url: "/assets/products/backpack.jpg",
+    stock: 22,
+    is_featured: 1,
+    store_name: "Sartorial Leathercraft",
+    store_slug: "velora-demo",
     description: "Sculpted full-grain calfskin and weather-resistant canvas designed for the discerning traveler.",
     details: ["Reinforced waterproof canvas", "Modular magnetic closures", "Dedicated 16-inch laptop chamber"]
   },
@@ -235,46 +315,170 @@ function Storefront() {
   const shipping = subtotal === 0 || subtotal >= 1999 ? 0 : 99
   const total = subtotal + shipping
 
-  const categories = ["All", "Audio & Acoustics", "Horology & Wearables", "Leather & Carry"]
+  // Common Marketplace Dynamic Catalog States
+  const [marketplaceProducts, setMarketplaceProducts] = useState<Product[]>(initialProducts)
+  const [loadingProducts, setLoadingProducts] = useState(false)
+  const [categoryTaxonomy, setCategoryTaxonomy] = useState<CategoryTaxonomy[]>([])
+  const [marketplaceStores, setMarketplaceStores] = useState<MarketplaceStore[]>([])
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string>("All")
+  const [selectedStoreId, setSelectedStoreId] = useState<string>("all")
+  const [minPrice, setMinPrice] = useState<string>("")
+  const [maxPrice, setMaxPrice] = useState<string>("")
+  const [inStockOnly, setInStockOnly] = useState<boolean>(false)
+  const [sortBy, setSortBy] = useState<string>("featured")
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+  const [detailQuantity, setDetailQuantity] = useState<number>(1)
+  const [shareCopied, setShareCopied] = useState(false)
 
-  // Filtered products
-  const filteredProducts = initialProducts.filter((product) => {
-    const matchesCategory = selectedCategory === "All" || product.category === selectedCategory
-    const matchesSearch =
-      searchQuery.trim() === "" ||
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.description.toLowerCase().includes(searchQuery.toLowerCase())
-    return matchesCategory && matchesSearch
-  })
+  // Fetch marketplace categories taxonomy
+  useEffect(() => {
+    fetch("/api/marketplace/categories")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.categories && Array.isArray(data.categories)) {
+          setCategoryTaxonomy(data.categories)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
-  async function addToCart(product: Product) {
+  // Fetch active marketplace stores
+  useEffect(() => {
+    fetch("/api/marketplace/stores")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.stores && Array.isArray(data.stores)) {
+          setMarketplaceStores(data.stores)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Fetch marketplace products based on current search, filters, and sort
+  const loadMarketplaceProducts = useCallback(async () => {
+    setLoadingProducts(true)
+    try {
+      const params = new URLSearchParams()
+      if (searchQuery.trim()) params.set("search", searchQuery.trim())
+      if (selectedCategory && selectedCategory !== "All") params.set("category", selectedCategory)
+      if (selectedSubcategory && selectedSubcategory !== "All") params.set("subcategory", selectedSubcategory)
+      if (selectedStoreId && selectedStoreId !== "all") params.set("store_id", selectedStoreId)
+      if (minPrice.trim()) params.set("min_price", minPrice.trim())
+      if (maxPrice.trim()) params.set("max_price", maxPrice.trim())
+      if (inStockOnly) params.set("in_stock", "true")
+      if (sortBy) params.set("sort", sortBy)
+
+      const res = await fetch(`/api/marketplace/products?${params.toString()}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data.products)) {
+          setMarketplaceProducts(data.products.map(mapBackendProduct))
+        }
+      }
+    } catch (err) {
+      console.warn("Marketplace products fetch error:", err)
+    } finally {
+      setLoadingProducts(false)
+    }
+  }, [searchQuery, selectedCategory, selectedSubcategory, selectedStoreId, minPrice, maxPrice, inStockOnly, sortBy])
+
+  useEffect(() => {
+    void loadMarketplaceProducts()
+  }, [loadMarketplaceProducts])
+
+  // Check URL query for direct product link (?product=123)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const productId = params.get("product")
+    if (productId && Number(productId) > 0) {
+      fetch(`/api/marketplace/products/${productId}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.product) {
+            setSelectedProduct(mapBackendProduct(data.product))
+          }
+        })
+        .catch(() => {})
+    }
+  }, [])
+
+  // Marketplace SEO metadata & JSON-LD
+  useEffect(() => {
+    document.title = "VELORA | The Curated Common Marketplace"
+
+    let metaDesc = document.querySelector('meta[name="description"]')
+    if (!metaDesc) {
+      metaDesc = document.createElement("meta")
+      metaDesc.setAttribute("name", "description")
+      document.head.appendChild(metaDesc)
+    }
+    metaDesc.setAttribute(
+      "content",
+      "Discover fine horology, acoustic planar engineering, and sculpted leather goods from independent ateliers across the VELORA multi-vendor marketplace."
+    )
+
+    let jsonLdScript = document.getElementById("velora-marketplace-jsonld")
+    if (!jsonLdScript) {
+      jsonLdScript = document.createElement("script")
+      jsonLdScript.id = "velora-marketplace-jsonld"
+      jsonLdScript.setAttribute("type", "application/ld+json")
+      document.head.appendChild(jsonLdScript)
+    }
+    jsonLdScript.textContent = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "VELORA Common Marketplace",
+      "url": window.location.origin,
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": `${window.location.origin}/?search={search_term_string}`,
+        "query-input": "required name=search_term_string"
+      }
+    })
+  }, [])
+
+  // Categories list for pills
+  const categoriesList = ["All", ...categoryTaxonomy.map((c) => c.name)]
+
+  // Filtered products: if marketplace products is empty and no filters are set, fallback to initialProducts
+  const displayProducts = marketplaceProducts.length > 0 ? marketplaceProducts : (
+    searchQuery || (selectedCategory !== "All") || inStockOnly || minPrice || maxPrice || (selectedStoreId !== "all")
+      ? []
+      : initialProducts
+  )
+
+  async function addToCart(product: Product, qty: number = 1) {
     if (addingProductId !== null) return
     setAddingProductId(product.id)
     await new Promise((resolve) => setTimeout(resolve, 300))
 
     setCart((current) => {
       const existing = current.find((item) => item.id === product.id)
+      const maxAllowed = product.stock !== undefined ? Math.min(product.stock, 10) : 10
       if (existing) {
         return current.map((item) =>
           item.id === product.id
-            ? { ...item, quantity: Math.min(item.quantity + 1, 10) }
+            ? { ...item, quantity: Math.min(item.quantity + qty, maxAllowed) }
             : item
         )
       }
-      return [...current, { ...product, quantity: 1 }]
+      return [...current, { ...product, quantity: Math.min(qty, maxAllowed) }]
     })
 
     setAddingProductId(null)
     setCartOpen(true)
     setSelectedProduct(null)
+    setDetailQuantity(1)
   }
 
-  function buyNow(product: Product) {
-    setCart([{ ...product, quantity: 1 }])
+  function buyNow(product: Product, qty: number = 1) {
+    const maxAllowed = product.stock !== undefined ? Math.min(product.stock, 10) : 10
+    setCart([{ ...product, quantity: Math.min(qty, maxAllowed) }])
     setSelectedProduct(null)
     setCartOpen(false)
     setOrderError("")
     setCheckoutOpen(true)
+    setDetailQuantity(1)
   }
 
   function changeQuantity(id: number, amount: number) {
@@ -977,14 +1181,17 @@ function Storefront() {
         </div>
 
         {/* Category Filter Pills */}
-        <div className="mb-12 flex flex-wrap items-center gap-2 sm:gap-3 border-b border-black/10 dark:border-white/10 pb-5">
-          {categories.map((cat) => (
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 pb-4">
+          {categoriesList.map((cat) => (
             <button
               key={cat}
               type="button"
-              onClick={() => setSelectedCategory(cat)}
+              onClick={() => {
+                setSelectedCategory(cat)
+                setSelectedSubcategory("All")
+              }}
               className={`rounded-full px-5 py-2 text-xs tracking-[0.16em] uppercase transition ${selectedCategory === cat
-                ? "bg-black text-white dark:bg-white dark:text-black font-medium"
+                ? "bg-black text-white dark:bg-white dark:text-black font-medium shadow-sm"
                 : "bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 opacity-70"
                 }`}
             >
@@ -993,55 +1200,251 @@ function Storefront() {
           ))}
         </div>
 
+        {/* Subcategories (if selected category has subcategories) */}
+        {(() => {
+          const currentCatObj = categoryTaxonomy.find((c) => c.name === selectedCategory)
+          if (currentCatObj && currentCatObj.subcategories.length > 0) {
+            return (
+              <div className="mb-6 flex flex-wrap items-center gap-2 pt-2 border-t border-black/5 dark:border-white/5">
+                <span className="text-[10px] uppercase tracking-widest text-[#D4AF37] font-semibold mr-1">
+                  Subcategories:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubcategory("All")}
+                  className={`rounded-full px-3 py-1 text-[11px] tracking-wider transition ${selectedSubcategory === "All"
+                    ? "bg-[#D4AF37] text-black font-semibold"
+                    : "bg-black/5 dark:bg-white/5 hover:opacity-100 opacity-60"
+                  }`}
+                >
+                  All
+                </button>
+                {currentCatObj.subcategories.map((subcat) => (
+                  <button
+                    key={subcat}
+                    type="button"
+                    onClick={() => setSelectedSubcategory(subcat)}
+                    className={`rounded-full px-3 py-1 text-[11px] tracking-wider transition ${selectedSubcategory === subcat
+                      ? "bg-[#D4AF37] text-black font-semibold"
+                      : "bg-black/5 dark:bg-white/5 hover:opacity-100 opacity-60"
+                    }`}
+                  >
+                    {subcat}
+                  </button>
+                ))}
+              </div>
+            )
+          }
+          return null
+        })()}
+
+        {/* Advanced Filters & Sorting Toolbar */}
+        <div className="mb-10 rounded-2xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
+            {/* Search Input */}
+            <div className="relative flex-1 min-w-[200px] max-w-md">
+              <input
+                type="search"
+                placeholder="Search across all sellers and products..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-xl bg-white dark:bg-[#1a1a1e] border border-black/10 dark:border-white/10 py-2.5 pl-9 pr-8 text-xs placeholder:opacity-50 focus:outline-none focus:border-[#D4AF37]"
+              />
+              <span className="absolute left-3 top-2.5 text-xs opacity-40">🔍</span>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-2 text-sm opacity-50 hover:opacity-100"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+
+            {/* Store / Seller Filter */}
+            {marketplaceStores.length > 0 && (
+              <select
+                value={selectedStoreId}
+                onChange={(e) => setSelectedStoreId(e.target.value)}
+                className="rounded-xl bg-white dark:bg-[#1a1a1e] border border-black/10 dark:border-white/10 py-2 px-3 text-xs focus:outline-none focus:border-[#D4AF37]"
+              >
+                <option value="all">All Sellers ({marketplaceStores.length})</option>
+                {marketplaceStores.map((store) => (
+                  <option key={store.id} value={String(store.id)}>
+                    {store.name} ({store.products_count} items)
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Price Filter Inputs */}
+            <div className="hidden sm:flex items-center gap-1.5 text-xs">
+              <span className="opacity-50">₹</span>
+              <input
+                type="number"
+                placeholder="Min"
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+                className="w-16 rounded-lg bg-white dark:bg-[#1a1a1e] border border-black/10 dark:border-white/10 py-1.5 px-2 text-xs focus:outline-none focus:border-[#D4AF37]"
+              />
+              <span className="opacity-40">-</span>
+              <input
+                type="number"
+                placeholder="Max"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+                className="w-16 rounded-lg bg-white dark:bg-[#1a1a1e] border border-black/10 dark:border-white/10 py-1.5 px-2 text-xs focus:outline-none focus:border-[#D4AF37]"
+              />
+            </div>
+
+            {/* Mobile Filter Toggle */}
+            <button
+              type="button"
+              onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
+              className="sm:hidden flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white dark:bg-[#1a1a1e] border border-black/10 dark:border-white/10 text-xs text-[#D4AF37]"
+            >
+              <span>⚙ Filters</span>
+              <span className="text-[10px]">{mobileFiltersOpen ? "▲" : "▼"}</span>
+            </button>
+          </div>
+
+          {/* Mobile Filter Drawer / Collapsible */}
+          {mobileFiltersOpen && (
+            <div className="sm:hidden w-full pt-3 mt-2 border-t border-black/10 dark:border-white/10 flex flex-col gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="opacity-70">Price Range (₹):</span>
+                <input
+                  type="number"
+                  placeholder="Min"
+                  value={minPrice}
+                  onChange={(e) => setMinPrice(e.target.value)}
+                  className="w-20 rounded-lg bg-white dark:bg-[#1a1a1e] border border-black/10 dark:border-white/10 py-1.5 px-2 text-xs"
+                />
+                <span>-</span>
+                <input
+                  type="number"
+                  placeholder="Max"
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(e.target.value)}
+                  className="w-20 rounded-lg bg-white dark:bg-[#1a1a1e] border border-black/10 dark:border-white/10 py-1.5 px-2 text-xs"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            {/* Sorting Dropdown */}
+            <div className="flex items-center gap-2 text-xs">
+              <span className="opacity-50 hidden sm:inline">Sort:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="rounded-xl bg-white dark:bg-[#1a1a1e] border border-black/10 dark:border-white/10 py-2 px-3 text-xs focus:outline-none focus:border-[#D4AF37]"
+              >
+                <option value="featured">★ Featured First</option>
+                <option value="price_asc">Price: Low to High</option>
+                <option value="price_desc">Price: High to Low</option>
+                <option value="newest">Newest Arrivals</option>
+                <option value="name_asc">Alphabetical (A-Z)</option>
+              </select>
+            </div>
+
+            {/* Clear All Filters */}
+            {(searchQuery || selectedCategory !== "All" || selectedSubcategory !== "All" || selectedStoreId !== "all" || minPrice || maxPrice || inStockOnly) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("")
+                  setSelectedCategory("All")
+                  setSelectedSubcategory("All")
+                  setSelectedStoreId("all")
+                  setMinPrice("")
+                  setMaxPrice("")
+                  setInStockOnly(false)
+                }}
+                className="text-xs uppercase tracking-wider text-[#D4AF37] hover:underline"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Products Grid */}
-        {filteredProducts.length === 0 ? (
+        {loadingProducts ? (
+          <div className="py-24 text-center">
+            <p className="text-xl font-editorial-serif text-[#D4AF37]">Discovering marketplace treasures...</p>
+          </div>
+        ) : displayProducts.length === 0 ? (
           <div className="py-24 text-center">
             <p className="text-xl font-editorial-serif">No essentials found matching your search.</p>
             <button
               type="button"
-              onClick={() => { setSelectedCategory("All"); setSearchQuery(""); }}
+              onClick={() => {
+                setSelectedCategory("All")
+                setSelectedSubcategory("All")
+                setSearchQuery("")
+                setSelectedStoreId("all")
+                setMinPrice("")
+                setMaxPrice("")
+                setInStockOnly(false)
+              }}
               className="mt-4 text-xs uppercase tracking-widest text-[#D4AF37] underline"
             >
               Reset Filters
             </button>
           </div>
         ) : (
-          <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-3">
-            {filteredProducts.map((product, index) => (
+          <div className="grid gap-8 sm:gap-10 md:grid-cols-2 lg:grid-cols-3">
+            {displayProducts.map((product, index) => (
               <motion.article
                 key={product.id}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: index * 0.1 }}
-                className="group flex flex-col justify-between"
+                transition={{ duration: 0.5, delay: Math.min(index * 0.05, 0.3) }}
+                className="group flex flex-col justify-between rounded-3xl border border-black/5 dark:border-white/10 bg-black/[0.01] dark:bg-white/[0.01] p-4 transition-all hover:border-[#D4AF37]/50"
               >
                 {/* Product Image Frame */}
                 <div className="relative overflow-hidden rounded-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10">
-                  <span className="absolute left-4 top-4 z-10 rounded-full bg-black/80 dark:bg-white/90 text-white dark:text-black px-3 py-1.5 text-[10px] font-semibold tracking-wider">
-                    {product.discount}% OFF
-                  </span>
+                  {product.discount > 0 && (
+                    <span className="absolute left-3.5 top-3.5 z-10 rounded-full bg-black/80 dark:bg-white/90 text-white dark:text-black px-2.5 py-1 text-[10px] font-semibold tracking-wider">
+                      {product.discount}% OFF
+                    </span>
+                  )}
+
+                  {product.is_featured === 1 && (
+                    <span className="absolute right-3.5 top-3.5 z-10 rounded-full bg-[#D4AF37] text-black px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase shadow-sm">
+                      ★ Featured
+                    </span>
+                  )}
 
                   <VeloraImage
                     src={product.image}
                     alt={product.name}
                     animated
                     onClick={() => setSelectedProduct(product)}
-                    className="h-[360px] sm:h-[420px] w-full cursor-pointer object-cover transition-transform duration-700 group-hover:scale-105"
+                    className="h-[300px] sm:h-[380px] w-full cursor-pointer object-cover transition-transform duration-700 group-hover:scale-105"
                   />
 
                   {/* Floating Action Buttons */}
-                  <div className="absolute inset-x-4 bottom-4 grid grid-cols-2 gap-3 opacity-95">
+                  <div className="absolute inset-x-3.5 bottom-3.5 grid grid-cols-2 gap-2 opacity-95">
                     <AnimatedButton
                       onClick={() => addToCart(product)}
-                      disabled={addingProductId !== null}
-                      className="bg-white/95 hover:bg-white text-black px-4 py-3.5 text-xs uppercase tracking-wider font-medium shadow-md backdrop-blur-sm"
+                      disabled={addingProductId !== null || (product.stock !== undefined && product.stock <= 0)}
+                      className="bg-white/95 hover:bg-white text-black px-3 py-3 text-[11px] uppercase tracking-wider font-semibold shadow-md backdrop-blur-sm disabled:opacity-40"
                     >
-                      {addingProductId === product.id ? "Adding..." : "Add to Bag"}
+                      {product.stock !== undefined && product.stock <= 0
+                        ? "Out of Stock"
+                        : addingProductId === product.id
+                        ? "Adding..."
+                        : "Add to Bag"}
                     </AnimatedButton>
                     <AnimatedButton
                       onClick={() => buyNow(product)}
-                      className="bg-black/95 hover:bg-black text-white dark:bg-[#D4AF37] dark:text-black px-4 py-3.5 text-xs uppercase tracking-wider font-medium shadow-md"
+                      disabled={product.stock !== undefined && product.stock <= 0}
+                      className="bg-black/95 hover:bg-black text-white dark:bg-[#D4AF37] dark:text-black px-3 py-3 text-[11px] uppercase tracking-wider font-semibold shadow-md disabled:opacity-40"
                     >
                       Buy Now
                     </AnimatedButton>
@@ -1049,25 +1452,67 @@ function Storefront() {
                 </div>
 
                 {/* Product Meta */}
-                <div className="pt-6 flex items-start justify-between gap-4">
+                <div className="pt-4 flex flex-col justify-between flex-1">
                   <div>
-                    <span className="text-[10px] tracking-[0.25em] uppercase text-[#D4AF37]">
-                      {product.category}
-                    </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] tracking-[0.2em] uppercase text-[#D4AF37] font-semibold">
+                        {product.category}{product.subcategory ? ` › ${product.subcategory}` : ""}
+                      </span>
+
+                      {/* Stock Badge */}
+                      {product.stock !== undefined && (
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                          product.stock > 5
+                            ? "bg-emerald-500/10 text-emerald-500"
+                            : product.stock > 0
+                            ? "bg-amber-500/10 text-amber-500"
+                            : "bg-red-500/10 text-red-500"
+                        }`}>
+                          {product.stock > 5 ? `${product.stock} in stock` : product.stock > 0 ? `Only ${product.stock} left` : "Sold Out"}
+                        </span>
+                      )}
+                    </div>
+
                     <h3
                       onClick={() => setSelectedProduct(product)}
-                      className="mt-1 text-lg font-medium cursor-pointer hover:opacity-70 transition font-editorial-serif"
+                      className="mt-1.5 text-lg font-medium cursor-pointer hover:text-[#D4AF37] transition font-editorial-serif line-clamp-1"
                     >
                       {product.name}
                     </h3>
-                    <p className="mt-1.5 text-xs opacity-60 line-clamp-2 leading-relaxed">
+
+                    {/* Multi-Seller Attribution */}
+                    <div className="mt-1 flex items-center gap-1.5 text-xs text-black/60 dark:text-white/60">
+                      <span>Sold by</span>
+                      <a
+                        href={`/${product.store_slug || "velora-demo"}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="font-medium text-[#D4AF37] hover:underline"
+                        title="View individual seller storefront"
+                      >
+                        {product.store_name || "VELORA Atelier"}
+                      </a>
+                    </div>
+
+                    <p className="mt-2 text-xs opacity-60 line-clamp-2 leading-relaxed">
                       {product.description}
                     </p>
                   </div>
 
-                  <div className="text-right shrink-0">
-                    <p className="text-base font-semibold">{formatPrice(product.price)}</p>
-                    <p className="text-xs opacity-40 line-through mt-0.5">{formatPrice(product.oldPrice)}</p>
+                  <div className="mt-4 pt-3 border-t border-black/5 dark:border-white/5 flex items-baseline justify-between">
+                    <div>
+                      <p className="text-base font-semibold">{formatPrice(product.price)}</p>
+                      {product.oldPrice > product.price && (
+                        <p className="text-xs opacity-40 line-through">{formatPrice(product.oldPrice)}</p>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedProduct(product)}
+                      className="text-xs uppercase tracking-wider text-[#D4AF37] hover:underline font-medium"
+                    >
+                      Quick View &rarr;
+                    </button>
                   </div>
                 </div>
               </motion.article>
@@ -1251,27 +1696,82 @@ function Storefront() {
                 </div>
 
                 <div>
-                  <span className="text-[10px] uppercase tracking-[0.3em] text-[#D4AF37]">
-                    {selectedProduct.category}
-                  </span>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] uppercase tracking-[0.3em] text-[#D4AF37] font-semibold">
+                      {selectedProduct.category}{selectedProduct.subcategory ? ` › ${selectedProduct.subcategory}` : ""}
+                    </span>
+
+                    {/* Stock status badge */}
+                    {selectedProduct.stock !== undefined && (
+                      <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full ${
+                        selectedProduct.stock > 0
+                          ? "bg-emerald-500/10 text-emerald-500"
+                          : "bg-red-500/10 text-red-500"
+                      }`}>
+                        {selectedProduct.stock > 0 ? `In Stock (${selectedProduct.stock} available)` : "Out of Stock"}
+                      </span>
+                    )}
+                  </div>
+
                   <h3 className="mt-2 text-3xl sm:text-4xl font-normal font-editorial-serif">
                     {selectedProduct.name}
                   </h3>
 
-                  <div className="mt-4 flex items-center gap-4">
-                    <span className="text-2xl font-semibold">{formatPrice(selectedProduct.price)}</span>
-                    <span className="text-sm opacity-40 line-through">{formatPrice(selectedProduct.oldPrice)}</span>
-                    <span className="rounded-full bg-[#D4AF37]/20 text-[#D4AF37] px-2.5 py-1 text-xs font-medium">
-                      {selectedProduct.discount}% OFF
-                    </span>
+                  {/* Multi-Seller Store Badge */}
+                  <div className="mt-3 flex items-center gap-2 text-xs">
+                    <span className="opacity-60">Verified Atelier:</span>
+                    <a
+                      href={`/${selectedProduct.store_slug || "velora-demo"}`}
+                      className="font-semibold text-[#D4AF37] hover:underline flex items-center gap-1"
+                      title="Visit seller storefront"
+                    >
+                      <span>🏬 {selectedProduct.store_name || "VELORA Atelier"}</span>
+                      <span className="text-[10px]">&rarr;</span>
+                    </a>
                   </div>
 
-                  <p className="mt-5 text-xs sm:text-sm leading-relaxed opacity-70">
+                  <div className="mt-4 flex items-center gap-4">
+                    <span className="text-2xl font-semibold">{formatPrice(selectedProduct.price)}</span>
+                    {selectedProduct.oldPrice > selectedProduct.price && (
+                      <span className="text-sm opacity-40 line-through">{formatPrice(selectedProduct.oldPrice)}</span>
+                    )}
+                    {selectedProduct.discount > 0 && (
+                      <span className="rounded-full bg-[#D4AF37]/20 text-[#D4AF37] px-2.5 py-1 text-xs font-medium">
+                        {selectedProduct.discount}% OFF
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="mt-4 text-xs sm:text-sm leading-relaxed opacity-70">
                     {selectedProduct.description}
                   </p>
 
+                  {/* Quantity selector */}
+                  {selectedProduct.stock !== undefined && selectedProduct.stock > 0 && (
+                    <div className="mt-5 flex items-center gap-3">
+                      <span className="text-xs uppercase tracking-wider opacity-70">Quantity:</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDetailQuantity((q) => Math.max(1, q - 1))}
+                          className="h-8 w-8 rounded-lg border border-black/20 dark:border-white/20 flex items-center justify-center text-sm hover:border-[#D4AF37]"
+                        >
+                          &minus;
+                        </button>
+                        <span className="text-xs font-semibold px-2">{detailQuantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => setDetailQuantity((q) => Math.min(selectedProduct.stock || 10, q + 1))}
+                          className="h-8 w-8 rounded-lg border border-black/20 dark:border-white/20 flex items-center justify-center text-sm hover:border-[#D4AF37]"
+                        >
+                          &#43;
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {selectedProduct.details && (
-                    <ul className="mt-6 space-y-2 border-t border-black/10 dark:border-white/10 pt-4 text-xs opacity-75">
+                    <ul className="mt-5 space-y-1.5 border-t border-black/10 dark:border-white/10 pt-4 text-xs opacity-75">
                       {selectedProduct.details.map((detail) => (
                         <li key={detail} className="flex items-center gap-2">
                           <span className="text-[#D4AF37]">&bull;</span>
@@ -1281,19 +1781,45 @@ function Storefront() {
                     </ul>
                   )}
 
-                  <div className="mt-8 grid grid-cols-2 gap-4">
+                  <div className="mt-7 grid grid-cols-2 gap-3">
                     <AnimatedButton
-                      onClick={() => addToCart(selectedProduct)}
-                      className="border border-black/20 dark:border-white/20 px-5 py-4 text-xs uppercase tracking-widest font-medium hover:border-black dark:hover:border-white"
+                      onClick={() => addToCart(selectedProduct, detailQuantity)}
+                      disabled={selectedProduct.stock !== undefined && selectedProduct.stock <= 0}
+                      className="border border-black/20 dark:border-white/20 px-4 py-3.5 text-xs uppercase tracking-widest font-medium hover:border-black dark:hover:border-white disabled:opacity-40"
                     >
-                      Add to Bag
+                      {selectedProduct.stock !== undefined && selectedProduct.stock <= 0 ? "Out of Stock" : "Add to Bag"}
                     </AnimatedButton>
                     <AnimatedButton
-                      onClick={() => buyNow(selectedProduct)}
-                      className="bg-black text-white dark:bg-[#D4AF37] dark:text-black px-5 py-4 text-xs uppercase tracking-widest font-medium shadow-md"
+                      onClick={() => buyNow(selectedProduct, detailQuantity)}
+                      disabled={selectedProduct.stock !== undefined && selectedProduct.stock <= 0}
+                      className="bg-black text-white dark:bg-[#D4AF37] dark:text-black px-4 py-3.5 text-xs uppercase tracking-widest font-medium shadow-md disabled:opacity-40"
                     >
                       Buy Now
                     </AnimatedButton>
+                  </div>
+
+                  {/* Share button */}
+                  <div className="mt-4 pt-3 border-t border-black/5 dark:border-white/5 flex items-center justify-between text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = `${window.location.origin}/?product=${selectedProduct.id}`
+                        navigator.clipboard?.writeText(url)
+                        setShareCopied(true)
+                        setTimeout(() => setShareCopied(false), 2000)
+                      }}
+                      className="text-[#D4AF37] hover:underline flex items-center gap-1.5"
+                    >
+                      <span>🔗</span>
+                      <span>{shareCopied ? "Link Copied!" : "Share Product Link"}</span>
+                    </button>
+
+                    <a
+                      href={`/${selectedProduct.store_slug || "velora-demo"}`}
+                      className="opacity-70 hover:opacity-100 underline text-xs"
+                    >
+                      View All From This Seller
+                    </a>
                   </div>
                 </div>
               </div>
@@ -1356,7 +1882,14 @@ function Storefront() {
                         <img src={item.image} alt={item.name} className="h-20 w-20 rounded-xl object-cover" />
                         <div className="min-w-0 flex-1">
                           <div className="flex justify-between gap-2">
-                            <p className="text-sm font-medium font-editorial-serif">{item.name}</p>
+                            <div>
+                              <p className="text-sm font-medium font-editorial-serif">{item.name}</p>
+                              {item.store_name && (
+                                <p className="text-[10px] text-[#D4AF37] font-semibold tracking-wide">
+                                  Sold by {item.store_name}
+                                </p>
+                              )}
+                            </div>
                             <button
                               type="button"
                               onClick={() => removeItem(item.id)}

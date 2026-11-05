@@ -91,7 +91,9 @@ export function registerProductRoutes(app, db, jwtSecret) {
       "stock",
       "image_url",
       "category",
-      "is_active"
+      "subcategory",
+      "is_active",
+      "is_published_to_marketplace"
     ];
 
     if (
@@ -142,8 +144,19 @@ export function registerProductRoutes(app, db, jwtSecret) {
     ) return false;
 
     if (
+      "subcategory" in body &&
+      (typeof body.subcategory !== "string" ||
+        body.subcategory.trim().length > 100)
+    ) return false;
+
+    if (
       "is_active" in body &&
       ![0, 1, true, false].includes(body.is_active)
+    ) return false;
+
+    if (
+      "is_published_to_marketplace" in body &&
+      ![0, 1, true, false].includes(body.is_published_to_marketplace)
     ) return false;
 
     return true;
@@ -345,10 +358,14 @@ export function registerProductRoutes(app, db, jwtSecret) {
         price,
         stock,
         image_url = "",
-        category = "General"
+        category = "General",
+        subcategory = "",
+        is_published_to_marketplace = 1
       } = req.body;
 
       const cleanCategory = typeof category === "string" && category.trim() ? category.trim() : "General";
+      const cleanSubcategory = typeof subcategory === "string" ? subcategory.trim() : "";
+      const published = is_published_to_marketplace === 0 || is_published_to_marketplace === false ? 0 : 1;
 
       const result = db.prepare(`
         INSERT INTO products (
@@ -359,9 +376,12 @@ export function registerProductRoutes(app, db, jwtSecret) {
           stock,
           image_url,
           category,
-          is_active
+          subcategory,
+          is_active,
+          is_published_to_marketplace,
+          marketplace_status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 'approved')
       `).run(
         store.id,
         name.trim(),
@@ -369,7 +389,9 @@ export function registerProductRoutes(app, db, jwtSecret) {
         price,
         stock,
         image_url,
-        cleanCategory
+        cleanCategory,
+        cleanSubcategory,
+        published
       );
 
       const product = db.prepare(`
@@ -446,7 +468,9 @@ export function registerProductRoutes(app, db, jwtSecret) {
       const values = fields.map((field) => {
         if (field === "name") return body[field].trim();
         if (field === "category") return body[field].trim() || "General";
+        if (field === "subcategory") return typeof body[field] === "string" ? body[field].trim() : "";
         if (field === "is_active") return Number(body[field]);
+        if (field === "is_published_to_marketplace") return Number(Boolean(body[field]));
         return body[field];
       });
 
@@ -528,7 +552,7 @@ export function registerProductRoutes(app, db, jwtSecret) {
     }
   });
 
-  // GET /api/seller/orders â€” fetch orders belonging to the logged-in seller's store
+  // GET /api/seller/orders — fetch orders belonging to the logged-in seller's store
   app.get("/api/seller/orders", authenticateSeller, (req, res) => {
     try {
       const store = getSellerStore(req.seller.id);
@@ -540,17 +564,51 @@ export function registerProductRoutes(app, db, jwtSecret) {
         });
       }
 
-      const orders = db.prepare(`
+      const rawOrders = db.prepare(`
         SELECT *
         FROM orders
-        WHERE store_id = ?
+        WHERE store_id = ? OR store_id IS NULL
         ORDER BY id DESC
       `).all(store.id);
 
-      const formattedOrders = orders.map((order) => ({
-        ...normalizeOrderFees(order),
-        items: typeof order.items === "string" ? JSON.parse(order.items) : order.items
-      }));
+      const formattedOrders = [];
+      for (const order of rawOrders) {
+        let rawItems = [];
+        try {
+          rawItems = typeof order.items === "string" ? JSON.parse(order.items) : (order.items || []);
+        } catch {
+          rawItems = [];
+        }
+
+        if (order.store_id === store.id) {
+          formattedOrders.push({
+            ...normalizeOrderFees(order),
+            items: rawItems
+          });
+        } else if (order.store_id === null || order.store_id === undefined) {
+          // Check if any items belong to this seller's store
+          const sellerItems = Array.isArray(rawItems)
+            ? rawItems.filter((it) => Number(it.store_id) === Number(store.id))
+            : [];
+
+          if (sellerItems.length > 0) {
+            const sellerSubtotal = sellerItems.reduce(
+              (sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 1),
+              0
+            );
+            const feeData = calculatePlatformFee(sellerSubtotal);
+            formattedOrders.push({
+              ...normalizeOrderFees(order),
+              total: sellerSubtotal,
+              platform_fee: feeData.platform_fee,
+              seller_payout: feeData.seller_payout,
+              fee_rate: feeData.fee_rate,
+              items: sellerItems,
+              is_marketplace_order: true
+            });
+          }
+        }
+      }
 
       return res.json({
         status: "success",
@@ -602,12 +660,30 @@ export function registerProductRoutes(app, db, jwtSecret) {
       }
 
       const existing = db.prepare(`
-        SELECT id, total, platform_fee
+        SELECT id, total, platform_fee, store_id, items
         FROM orders
-        WHERE id = ? AND store_id = ?
-      `).get(id, store.id);
+        WHERE id = ?
+      `).get(id);
 
       if (!existing) {
+        return res.status(404).json({
+          status: "error",
+          message: "Order not found."
+        });
+      }
+
+      const isDirectStoreOrder = Number(existing.store_id) === Number(store.id);
+      let hasSellerItems = false;
+      if (!isDirectStoreOrder && existing.items) {
+        try {
+          const parsed = JSON.parse(existing.items);
+          hasSellerItems = Array.isArray(parsed) && parsed.some((it) => Number(it.store_id) === Number(store.id));
+        } catch {
+          hasSellerItems = false;
+        }
+      }
+
+      if (!isDirectStoreOrder && !hasSellerItems) {
         return res.status(404).json({
           status: "error",
           message: "Order not found in your store."
@@ -619,14 +695,14 @@ export function registerProductRoutes(app, db, jwtSecret) {
         db.prepare(`
           UPDATE orders
           SET status = ?, platform_fee = ?, seller_payout = ?, fee_rate = ?
-          WHERE id = ? AND store_id = ?
-        `).run(status, feeDetails.platform_fee, feeDetails.seller_payout, feeDetails.fee_rate, id, store.id);
+          WHERE id = ?
+        `).run(status, feeDetails.platform_fee, feeDetails.seller_payout, feeDetails.fee_rate, id);
       } else {
         db.prepare(`
           UPDATE orders
           SET status = ?
-          WHERE id = ? AND store_id = ?
-        `).run(status, id, store.id);
+          WHERE id = ?
+        `).run(status, id);
       }
 
       if (status === "Delivered") {

@@ -234,13 +234,62 @@ export function recordOrderDeliverySettlement(db, orderId) {
         ) VALUES (?, ?, ?, 'PLATFORM_FEE', 'CREDIT', ?, 'completed', ?)
       `).run(feeRef, order.store_id, order.id, platformFee, `VELORA Platform fee (3%) for Delivered Order #${order.id}`);
     } else {
-      // Marketplace direct order
-      const feeRef = `LEDG_MKT_${order.id}_${Date.now()}`;
-      db.prepare(`
-        INSERT INTO financial_ledger (
-          transaction_ref, seller_id, order_id, transaction_type, entry_type, amount, status, description
-        ) VALUES (?, NULL, ?, 'PLATFORM_FEE', 'CREDIT', ?, 'completed', ?)
-      `).run(feeRef, order.id, total, `Marketplace direct revenue for Delivered Order #${order.id}`);
+      // Marketplace order: group items by seller store if present
+      let rawItems = [];
+      try {
+        rawItems = typeof order.items === "string" ? JSON.parse(order.items) : (order.items || []);
+      } catch {
+        rawItems = [];
+      }
+
+      const storeGroups = new Map();
+      let unassignedTotal = 0;
+
+      for (const it of rawItems) {
+        const itTotal = (Number(it.price) || 0) * (Number(it.quantity) || 1);
+        if (it.store_id) {
+          const sid = Number(it.store_id);
+          storeGroups.set(sid, (storeGroups.get(sid) || 0) + itTotal);
+        } else {
+          unassignedTotal += itTotal;
+        }
+      }
+
+      if (storeGroups.size > 0) {
+        for (const [sId, sTotal] of storeGroups.entries()) {
+          const sFeeData = calculatePlatformFee(sTotal);
+          const sellerRef = `LEDG_EARN_${order.id}_S${sId}_${Date.now()}`;
+          db.prepare(`
+            INSERT INTO financial_ledger (
+              transaction_ref, seller_id, order_id, transaction_type, entry_type, amount, status, description
+            ) VALUES (?, ?, ?, 'SELLER_EARNING', 'CREDIT', ?, 'completed', ?)
+          `).run(sellerRef, sId, order.id, sFeeData.seller_payout, `Seller net payout (97%) for Delivered Order #${order.id}`);
+
+          const feeRef = `LEDG_FEE_${order.id}_S${sId}_${Date.now()}`;
+          db.prepare(`
+            INSERT INTO financial_ledger (
+              transaction_ref, seller_id, order_id, transaction_type, entry_type, amount, status, description
+            ) VALUES (?, ?, ?, 'PLATFORM_FEE', 'CREDIT', ?, 'completed', ?)
+          `).run(feeRef, sId, order.id, sFeeData.platform_fee, `VELORA Platform fee (3%) for Delivered Order #${order.id}`);
+        }
+
+        if (unassignedTotal > 0) {
+          const feeRef = `LEDG_MKT_${order.id}_${Date.now()}`;
+          db.prepare(`
+            INSERT INTO financial_ledger (
+              transaction_ref, seller_id, order_id, transaction_type, entry_type, amount, status, description
+            ) VALUES (?, NULL, ?, 'PLATFORM_FEE', 'CREDIT', ?, 'completed', ?)
+          `).run(feeRef, order.id, unassignedTotal, `Marketplace direct revenue for Delivered Order #${order.id}`);
+        }
+      } else {
+        // Marketplace direct order
+        const feeRef = `LEDG_MKT_${order.id}_${Date.now()}`;
+        db.prepare(`
+          INSERT INTO financial_ledger (
+            transaction_ref, seller_id, order_id, transaction_type, entry_type, amount, status, description
+          ) VALUES (?, NULL, ?, 'PLATFORM_FEE', 'CREDIT', ?, 'completed', ?)
+        `).run(feeRef, order.id, total, `Marketplace direct revenue for Delivered Order #${order.id}`);
+      }
     }
 
     // Ensure order record fee columns are synchronized

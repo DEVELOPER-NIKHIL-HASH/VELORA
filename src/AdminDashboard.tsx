@@ -191,8 +191,28 @@ const money = (value: number) =>
     maximumFractionDigits: 2,
   }).format(value);
 
+type AdminMarketplaceProduct = {
+  id: number;
+  store_id: number;
+  name: string;
+  description: string;
+  price: number;
+  stock: number;
+  image_url: string;
+  category: string;
+  subcategory?: string;
+  is_active: number;
+  is_published_to_marketplace: number;
+  is_featured: number;
+  marketplace_status: string;
+  created_at: string;
+  store_name: string;
+  store_slug: string;
+  seller_email: string;
+};
+
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<"orders" | "financials" | "settings">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "financials" | "marketplace" | "settings">("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(() => Boolean(sessionStorage.getItem("velora_admin_token")));
@@ -204,6 +224,12 @@ export default function AdminDashboard() {
   );
   const [adminPassword, setAdminPassword] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+
+  // Marketplace Management State
+  const [marketplaceProducts, setMarketplaceProducts] = useState<AdminMarketplaceProduct[]>([]);
+  const [mktLoading, setMktLoading] = useState(false);
+  const [mktFilterStatus, setMktFilterStatus] = useState<string>("all");
+  const [mktSearch, setMktSearch] = useState<string>("");
 
   // Admin Password Management State
   const [currentPassword, setCurrentPassword] = useState("");
@@ -324,11 +350,69 @@ export default function AdminDashboard() {
     }
   }, [adminToken]);
 
+  const loadMarketplaceProducts = useCallback(async () => {
+    if (!adminToken) return;
+    setMktLoading(true);
+    try {
+      const headers = { Authorization: `Bearer ${adminToken}` };
+      const res = await fetch("/api/admin/marketplace/products", { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setMarketplaceProducts(data.products ?? []);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load marketplace products.");
+    } finally {
+      setMktLoading(false);
+    }
+  }, [adminToken]);
+
+  async function handleToggleMktFeature(productId: number, currentFeatured: number) {
+    if (!adminToken) return;
+    try {
+      const res = await fetch(`/api/admin/marketplace/products/${productId}/feature`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ is_featured: currentFeatured ? 0 : 1 }),
+      });
+      if (res.ok) {
+        setNotice(`Product #${productId} featured status updated.`);
+        void loadMarketplaceProducts();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to toggle feature status.");
+    }
+  }
+
+  async function handleUpdateMktStatus(productId: number, status: string) {
+    if (!adminToken) return;
+    try {
+      const res = await fetch(`/api/admin/marketplace/products/${productId}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ marketplace_status: status }),
+      });
+      if (res.ok) {
+        setNotice(`Product #${productId} status set to ${status}.`);
+        void loadMarketplaceProducts();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update marketplace status.");
+    }
+  }
+
   useEffect(() => {
     if (!adminToken) return;
     void loadOrders();
     void loadFinancialData();
-  }, [adminToken, loadOrders, loadFinancialData]);
+    void loadMarketplaceProducts();
+  }, [adminToken, loadOrders, loadFinancialData, loadMarketplaceProducts]);
 
   useEffect(() => {
     if (!adminToken && forgotPasswordView) {
@@ -961,6 +1045,16 @@ export default function AdminDashboard() {
           style={{ fontSize: "14px", padding: "10px 20px" }}
         >
           💰 Financial Infrastructure & Ledger
+        </button>
+        <button
+          className={`admin-button ${activeTab === "marketplace" ? "gold" : "secondary"}`}
+          onClick={() => {
+            setActiveTab("marketplace");
+            void loadMarketplaceProducts();
+          }}
+          style={{ fontSize: "14px", padding: "10px 20px" }}
+        >
+          🏪 Marketplace Catalog ({marketplaceProducts.length})
         </button>
         <button
           className={`admin-button ${activeTab === "settings" ? "gold" : "secondary"}`}
@@ -1673,6 +1767,209 @@ export default function AdminDashboard() {
                         </td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: MARKETPLACE MANAGEMENT & MODERATION                                   */}
+      {/* ========================================================================= */}
+      {activeTab === "marketplace" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          <section className="admin-panel">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+              <div>
+                <h2 style={{ fontSize: "20px", margin: "0 0 6px", color: "#f5f5f5" }}>
+                  Common VELORA Marketplace Catalog
+                </h2>
+                <p className="muted" style={{ margin: 0 }}>
+                  Manage multi-vendor marketplace products, curate featured items, and moderate vendor listings.
+                </p>
+              </div>
+              <button
+                className="admin-button secondary"
+                onClick={() => void loadMarketplaceProducts()}
+                disabled={mktLoading}
+                style={{ fontSize: "13px" }}
+              >
+                {mktLoading ? "Loading..." : "↻ Refresh Catalog"}
+              </button>
+            </div>
+
+            {/* Filter and Search Bar */}
+            <div style={{ display: "flex", gap: "14px", marginBottom: "20px", flexWrap: "wrap", alignItems: "center" }}>
+              <input
+                type="search"
+                className="admin-input"
+                placeholder="Search products or stores..."
+                value={mktSearch}
+                onChange={(e) => setMktSearch(e.target.value)}
+                style={{ maxWidth: "320px" }}
+              />
+
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span className="muted" style={{ fontSize: "13px" }}>Status:</span>
+                <select
+                  className="admin-select"
+                  value={mktFilterStatus}
+                  onChange={(e) => setMktFilterStatus(e.target.value)}
+                  style={{ minWidth: "140px" }}
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="approved">Approved</option>
+                  <option value="pending">Pending</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="hidden">Hidden</option>
+                </select>
+              </div>
+
+              <div style={{ marginLeft: "auto", display: "flex", gap: "8px", fontSize: "12px" }}>
+                <span style={{ background: "#1e2029", padding: "6px 12px", borderRadius: "16px", border: "1px solid #292a31" }}>
+                  Total: <strong>{marketplaceProducts.length}</strong>
+                </span>
+                <span style={{ background: "rgba(16,185,129,0.1)", color: "#10b981", padding: "6px 12px", borderRadius: "16px" }}>
+                  Approved: <strong>{marketplaceProducts.filter((p) => p.marketplace_status === "approved").length}</strong>
+                </span>
+                <span style={{ background: "rgba(212,175,55,0.1)", color: "#d4af37", padding: "6px 12px", borderRadius: "16px" }}>
+                  Featured: <strong>{marketplaceProducts.filter((p) => Boolean(p.is_featured)).length}</strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Table */}
+            {mktLoading ? (
+              <p className="muted" style={{ padding: "32px 0", textAlign: "center" }}>Loading marketplace products...</p>
+            ) : marketplaceProducts.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 0" }}>
+                <p className="muted">No marketplace products found in database.</p>
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: "50px" }}>ID</th>
+                      <th>Product</th>
+                      <th>Store / Seller</th>
+                      <th>Category</th>
+                      <th>Price</th>
+                      <th>Stock</th>
+                      <th>Featured</th>
+                      <th>Marketplace Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {marketplaceProducts
+                      .filter((p) => {
+                        const matchesStatus = mktFilterStatus === "all" || p.marketplace_status === mktFilterStatus;
+                        const term = mktSearch.trim().toLowerCase();
+                        const matchesSearch =
+                          !term ||
+                          p.name.toLowerCase().includes(term) ||
+                          p.store_name?.toLowerCase().includes(term) ||
+                          p.seller_email?.toLowerCase().includes(term);
+                        return matchesStatus && matchesSearch;
+                      })
+                      .map((product) => (
+                        <tr key={product.id}>
+                          <td className="muted" style={{ fontWeight: 600 }}>#{product.id}</td>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                              {product.image_url ? (
+                                <img
+                                  src={product.image_url}
+                                  alt={product.name}
+                                  style={{ width: "36px", height: "36px", objectFit: "cover", borderRadius: "6px", border: "1px solid #292a31" }}
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = "none";
+                                  }}
+                                />
+                              ) : (
+                                <div style={{ width: "36px", height: "36px", borderRadius: "6px", background: "#292a31", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px" }}>
+                                  📦
+                                </div>
+                              )}
+                              <div>
+                                <strong style={{ color: "#f5f5f5" }}>{product.name}</strong>
+                                <div className="muted" style={{ fontSize: "11px", maxWidth: "240px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {product.description || "No description provided."}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <div>
+                              <strong style={{ color: "#d4af37" }}>{product.store_name || `Store #${product.store_id}`}</strong>
+                              <div className="muted" style={{ fontSize: "11px" }}>{product.seller_email}</div>
+                            </div>
+                          </td>
+                          <td>
+                            <span style={{ background: "#1e2029", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", border: "1px solid #292a31" }}>
+                              {product.category || "General"}
+                              {product.subcategory ? ` › ${product.subcategory}` : ""}
+                            </span>
+                          </td>
+                          <td>
+                            <strong style={{ color: "#f5f5f5" }}>{money(product.price)}</strong>
+                          </td>
+                          <td>
+                            <span style={{ color: product.stock > 0 ? "#10b981" : "#ef4444", fontWeight: 600, fontSize: "13px" }}>
+                              {product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}
+                            </span>
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="admin-button"
+                              onClick={() => void handleToggleMktFeature(product.id, product.is_featured)}
+                              style={{
+                                padding: "4px 10px",
+                                fontSize: "12px",
+                                background: product.is_featured ? "rgba(212,175,55,0.2)" : "transparent",
+                                color: product.is_featured ? "#d4af37" : "#6b7280",
+                                border: product.is_featured ? "1px solid #d4af37" : "1px solid #292a31",
+                                cursor: "pointer",
+                                borderRadius: "6px"
+                              }}
+                            >
+                              {product.is_featured ? "★ Featured" : "☆ Standard"}
+                            </button>
+                          </td>
+                          <td>
+                            <select
+                              className="admin-select"
+                              value={product.marketplace_status || "approved"}
+                              onChange={(e) => void handleUpdateMktStatus(product.id, e.target.value)}
+                              style={{
+                                fontSize: "12px",
+                                padding: "4px 8px",
+                                background:
+                                  product.marketplace_status === "approved"
+                                    ? "rgba(16,185,129,0.15)"
+                                    : product.marketplace_status === "rejected"
+                                    ? "rgba(239,68,68,0.15)"
+                                    : "#1e2029",
+                                color:
+                                  product.marketplace_status === "approved"
+                                    ? "#10b981"
+                                    : product.marketplace_status === "rejected"
+                                    ? "#ef4444"
+                                    : "#d1d5db",
+                                border: "1px solid #292a31"
+                              }}
+                            >
+                              <option value="approved">Approved</option>
+                              <option value="pending">Pending</option>
+                              <option value="rejected">Rejected</option>
+                              <option value="hidden">Hidden</option>
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>

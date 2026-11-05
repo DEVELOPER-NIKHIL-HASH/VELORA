@@ -55,7 +55,11 @@ type Product = {
   stock: number;
   image_url: string;
   category?: string;
+  subcategory?: string;
   is_active: number | boolean;
+  is_published_to_marketplace?: number | boolean;
+  is_featured?: number | boolean;
+  marketplace_status?: string;
   created_at?: string;
 };
 
@@ -66,7 +70,9 @@ type ProductForm = {
   stock: string;
   image_url: string;
   category: string;
+  subcategory: string;
   is_active: boolean;
+  is_published_to_marketplace: boolean;
 };
 
 type OrderItem = {
@@ -162,7 +168,9 @@ const emptyProductForm: ProductForm = {
   stock: "0",
   image_url: "",
   category: "General",
+  subcategory: "",
   is_active: true,
+  is_published_to_marketplace: true,
 };
 
 function formatMoney(value: number): string {
@@ -769,7 +777,9 @@ export default function SellerDashboard() {
       stock: String(p.stock),
       image_url: existingImg,
       category: p.category || "General",
+      subcategory: p.subcategory || "",
       is_active: Boolean(p.is_active),
+      is_published_to_marketplace: p.is_published_to_marketplace === undefined ? true : Boolean(p.is_published_to_marketplace),
     });
     if (existingImg.startsWith("/uploads/")) {
       setUploadedImageUrl(existingImg);
@@ -872,7 +882,9 @@ export default function SellerDashboard() {
         stock: numStock,
         image_url: finalImageUrl,
         category: productForm.category.trim() || "General",
+        subcategory: productForm.subcategory.trim(),
         is_active: productForm.is_active ? 1 : 0,
+        is_published_to_marketplace: productForm.is_published_to_marketplace ? 1 : 0,
       };
 
       const url = editingProductId ? `${API}/products/${editingProductId}` : `${API}/products`;
@@ -2329,9 +2341,16 @@ export default function SellerDashboard() {
                               </td>
                               <td>{p.stock}</td>
                               <td>
-                                <span className={`velora-sd-status-badge ${p.is_active ? "delivered" : "cancelled"}`}>
-                                  {p.is_active ? "Active" : "Draft"}
-                                </span>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                  <span className={`velora-sd-status-badge ${p.is_active ? "delivered" : "cancelled"}`}>
+                                    {p.is_active ? "Active" : "Draft"}
+                                  </span>
+                                  {p.is_published_to_marketplace ? (
+                                    <span style={{ fontSize: "10px", color: "#059669", fontWeight: 600 }}>Marketplace</span>
+                                  ) : (
+                                    <span style={{ fontSize: "10px", color: "#6b7280" }}>Store Only</span>
+                                  )}
+                                </div>
                               </td>
                               <td>
                                 <div style={{ display: "flex", gap: "8px" }}>
@@ -3394,15 +3413,27 @@ export default function SellerDashboard() {
                 />
               </div>
 
-              <div className="velora-sd-form-group">
-                <label className="velora-sd-form-label">Category</label>
-                <input
-                  type="text"
-                  className="velora-sd-form-input"
-                  placeholder="e.g. Audio, Watches, Leather, Accessories"
-                  value={productForm.category}
-                  onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
-                />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                <div className="velora-sd-form-group">
+                  <label className="velora-sd-form-label">Category</label>
+                  <input
+                    type="text"
+                    className="velora-sd-form-input"
+                    placeholder="e.g. Audio, Watches, Leather"
+                    value={productForm.category}
+                    onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
+                  />
+                </div>
+                <div className="velora-sd-form-group">
+                  <label className="velora-sd-form-label">Subcategory</label>
+                  <input
+                    type="text"
+                    className="velora-sd-form-input"
+                    placeholder="e.g. Headphones, Smart Watches"
+                    value={productForm.subcategory}
+                    onChange={(e) => setProductForm({ ...productForm, subcategory: e.target.value })}
+                  />
+                </div>
               </div>
 
               <div className="velora-sd-form-group">
@@ -3577,16 +3608,30 @@ export default function SellerDashboard() {
                 />
               </div>
 
-              <div className="velora-sd-form-group" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <input
-                  type="checkbox"
-                  id="prod_active"
-                  checked={productForm.is_active}
-                  onChange={(e) => setProductForm({ ...productForm, is_active: e.target.checked })}
-                />
-                <label htmlFor="prod_active" style={{ fontSize: "13px", cursor: "pointer" }}>
-                  Publish product immediately as active listing
-                </label>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", margin: "14px 0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <input
+                    type="checkbox"
+                    id="prod_active"
+                    checked={productForm.is_active}
+                    onChange={(e) => setProductForm({ ...productForm, is_active: e.target.checked })}
+                  />
+                  <label htmlFor="prod_active" style={{ fontSize: "13px", cursor: "pointer", fontWeight: 500 }}>
+                    Active Product (Visible in your seller storefront)
+                  </label>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <input
+                    type="checkbox"
+                    id="prod_mkt_publish"
+                    checked={productForm.is_published_to_marketplace}
+                    onChange={(e) => setProductForm({ ...productForm, is_published_to_marketplace: e.target.checked })}
+                  />
+                  <label htmlFor="prod_mkt_publish" style={{ fontSize: "13px", cursor: "pointer", fontWeight: 500 }}>
+                    Publish to Common VELORA Marketplace (Discoverable across the central platform)
+                  </label>
+                </div>
               </div>
 
               <div className="velora-sd-form-actions">

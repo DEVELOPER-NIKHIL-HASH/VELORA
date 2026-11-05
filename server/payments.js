@@ -223,7 +223,7 @@ export function calculateOrderTotalServerSide(db, items, storeId = null, discoun
     };
   }
 
-  // 2. Curated Marketplace Order (storeId is null)
+  // 2. Curated & Multi-Vendor Marketplace Order (storeId is null)
   let subtotal = 0;
   const verifiedItems = [];
 
@@ -238,21 +238,44 @@ export function calculateOrderTotalServerSide(db, items, storeId = null, discoun
       throw new Error(`Invalid quantity for item ${itemId}.`);
     }
 
-    const catalogItem =
-      CURATED_MARKETPLACE_CATALOG[itemId] ||
-      db.prepare("SELECT id, name, price FROM products WHERE id = ?").get(itemId);
-
-    if (!catalogItem) {
-      throw new Error(`Marketplace product #${itemId} could not be verified.`);
+    const curated = CURATED_MARKETPLACE_CATALOG[itemId];
+    if (curated) {
+      subtotal += curated.price * qty;
+      verifiedItems.push({
+        id: curated.id,
+        name: curated.name,
+        price: curated.price,
+        quantity: qty,
+        store_id: null
+      });
+      continue;
     }
 
-    subtotal += catalogItem.price * qty;
-    verifiedItems.push({
-      id: catalogItem.id,
-      name: catalogItem.name,
-      price: catalogItem.price,
-      quantity: qty
-    });
+    const dbProduct = db
+      .prepare(
+        "SELECT id, store_id, name, price, stock, is_active FROM products WHERE id = ?"
+      )
+      .get(itemId);
+
+    if (dbProduct) {
+      if (dbProduct.is_active !== 1) {
+        throw new Error(`Product "${dbProduct.name}" is currently unavailable.`);
+      }
+      if (dbProduct.stock < qty) {
+        throw new Error(`Insufficient stock for "${dbProduct.name}". Only ${dbProduct.stock} units remaining.`);
+      }
+
+      subtotal += dbProduct.price * qty;
+      verifiedItems.push({
+        id: dbProduct.id,
+        name: dbProduct.name,
+        price: dbProduct.price,
+        quantity: qty,
+        store_id: dbProduct.store_id
+      });
+    } else {
+      throw new Error(`Marketplace product #${itemId} could not be verified.`);
+    }
   }
 
   const shipping = subtotal === 0 || subtotal >= 1999 ? 0 : 99;
@@ -408,9 +431,9 @@ export function registerPaymentRoutes(app, db) {
       let veloraOrderId;
       try {
         const createOrderTx = db.transaction(() => {
-          // If seller store, reserve stock
-          if (storeId) {
-            for (const vItem of verifiedItems) {
+          // Reserve stock for products originating from store catalogs
+          for (const vItem of verifiedItems) {
+            if (vItem.store_id || storeId) {
               const result = db
                 .prepare(
                   `UPDATE products
@@ -493,8 +516,8 @@ export function registerPaymentRoutes(app, db) {
           console.error("Razorpay API error:", rzpErr);
 
           // Restore stock and mark order cancelled on gateway failure
-          if (storeId) {
-            for (const vItem of verifiedItems) {
+          for (const vItem of verifiedItems) {
+            if (vItem.store_id || storeId) {
               db.prepare("UPDATE products SET stock = stock + ? WHERE id = ?").run(
                 vItem.quantity,
                 vItem.id
@@ -789,19 +812,19 @@ export function registerPaymentRoutes(app, db) {
            WHERE id = ?`
         ).run(orderId);
 
-        // Restore reserved stock if seller store order
-        if (order.store_id) {
-          try {
-            const items = JSON.parse(order.items);
-            for (const it of items) {
+        // Restore reserved stock
+        try {
+          const items = JSON.parse(order.items);
+          for (const it of items) {
+            if (it.store_id || order.store_id) {
               db.prepare("UPDATE products SET stock = stock + ? WHERE id = ?").run(
                 it.quantity,
                 it.id
               );
             }
-          } catch (e) {
-            console.error("Stock restore error:", e);
           }
+        } catch (e) {
+          console.error("Stock restore error:", e);
         }
       });
 
@@ -881,19 +904,19 @@ export function registerPaymentRoutes(app, db) {
            WHERE id = ?`
         ).run(orderId);
 
-        // Restore reserved stock if seller store order
-        if (order.store_id) {
-          try {
-            const items = JSON.parse(order.items);
-            for (const it of items) {
+        // Restore reserved stock
+        try {
+          const items = JSON.parse(order.items);
+          for (const it of items) {
+            if (it.store_id || order.store_id) {
               db.prepare("UPDATE products SET stock = stock + ? WHERE id = ?").run(
                 it.quantity,
                 it.id
               );
             }
-          } catch (e) {
-            console.error("Stock restore error:", e);
           }
+        } catch (e) {
+          console.error("Stock restore error:", e);
         }
       });
 

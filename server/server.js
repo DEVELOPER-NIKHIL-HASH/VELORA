@@ -15,6 +15,7 @@ import { PLATFORM_FEE_RATE, calculatePlatformFee, normalizeOrderFees } from "./f
 import { registerPaymentRoutes } from "./payments.js";
 import { initFinancialDatabase, registerFinancialRoutes, recordOrderDeliverySettlement } from "./financials.js";
 import { registerCustomerAuthRoutes } from "./customerAuth.js";
+import { registerMarketplaceRoutes } from "./marketplace.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -191,6 +192,7 @@ registerProductRoutes(app, db, JWT_SECRET);
 registerSellerFeatureRoutes(app, db, JWT_SECRET);
 registerPaymentRoutes(app, db);
 registerFinancialRoutes(app, db, JWT_SECRET, ADMIN_SECRET);
+registerMarketplaceRoutes(app, db, JWT_SECRET, ADMIN_SECRET);
 
 // Home
 app.get("/", (req, res) => {
@@ -383,49 +385,122 @@ app.post("/api/orders", (req, res) => {
       });
     }
 
-    // Fallback: Curated VELORA marketplace orders (store_id = NULL)
-    if (typeof total !== "number" || !Number.isFinite(total) || total < 0) {
-      return res.status(400).json({
-        status: "error",
-        message: "Valid total is required."
-      });
+    // Curated & Multi-Vendor VELORA marketplace orders (store_id = NULL)
+    let calculatedSubtotal = 0;
+    const verifiedItems = [];
+
+    for (const item of items) {
+      const itemId = Number(item.id);
+      const quantity = Number(item.quantity);
+
+      if (!Number.isSafeInteger(itemId) || itemId <= 0) {
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid product ID: ${item.id}`
+        });
+      }
+
+      if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid quantity for product ID ${itemId}.`
+        });
+      }
+
+      const dbProduct = db.prepare(`
+        SELECT id, store_id, name, price, stock, is_active
+        FROM products
+        WHERE id = ?
+      `).get(itemId);
+
+      if (dbProduct) {
+        if (dbProduct.is_active !== 1) {
+          return res.status(400).json({
+            status: "error",
+            message: `Product "${dbProduct.name}" is currently inactive or unavailable.`
+          });
+        }
+        if (dbProduct.stock < quantity) {
+          return res.status(400).json({
+            status: "error",
+            message: `Insufficient stock for "${dbProduct.name}". Only ${dbProduct.stock} units remaining.`
+          });
+        }
+        calculatedSubtotal += dbProduct.price * quantity;
+        verifiedItems.push({
+          id: dbProduct.id,
+          name: dbProduct.name,
+          price: dbProduct.price,
+          quantity: quantity,
+          store_id: dbProduct.store_id
+        });
+      } else {
+        // Fallback for curated catalog item
+        const fallbackPrice = typeof item.price === "number" && item.price >= 0 ? item.price : 0;
+        calculatedSubtotal += fallbackPrice * quantity;
+        verifiedItems.push({
+          id: itemId,
+          name: item.name || `Product #${itemId}`,
+          price: fallbackPrice,
+          quantity: quantity,
+          store_id: null
+        });
+      }
     }
 
-    const feeDetails = calculatePlatformFee(total);
+    const calculatedShipping = calculatedSubtotal === 0 || calculatedSubtotal >= 1999 ? 0 : 99;
+    const verifiedTotal = Math.max(0, calculatedSubtotal + calculatedShipping);
+    const feeDetails = calculatePlatformFee(verifiedTotal);
 
-    const result = db.prepare(`
-      INSERT INTO orders (
-        customer_name,
-        email,
-        total,
-        items,
-        status,
-        store_id,
-        platform_fee,
-        seller_payout,
-        fee_rate
-      )
-      VALUES (?, ?, ?, ?, 'Pending', NULL, ?, ?, ?)
-    `).run(
-      customer_name.trim(),
-      email.trim(),
-      total,
-      JSON.stringify(items),
-      feeDetails.platform_fee,
-      feeDetails.seller_payout,
-      feeDetails.fee_rate
-    );
+    const executeMarketplaceTx = db.transaction(() => {
+      // Atomic stock reservation
+      for (const vItem of verifiedItems) {
+        if (vItem.store_id) {
+          db.prepare(`
+            UPDATE products
+            SET stock = stock - ?
+            WHERE id = ? AND stock >= ?
+          `).run(vItem.quantity, vItem.id, vItem.quantity);
+        }
+      }
 
+      const result = db.prepare(`
+        INSERT INTO orders (
+          customer_name,
+          email,
+          total,
+          items,
+          status,
+          store_id,
+          platform_fee,
+          seller_payout,
+          fee_rate
+        )
+        VALUES (?, ?, ?, ?, 'Pending', NULL, ?, ?, ?)
+      `).run(
+        customer_name.trim(),
+        email.trim(),
+        verifiedTotal,
+        JSON.stringify(verifiedItems),
+        feeDetails.platform_fee,
+        feeDetails.seller_payout,
+        feeDetails.fee_rate
+      );
+
+      return result.lastInsertRowid;
+    });
+
+    const orderId = executeMarketplaceTx();
     const order = db.prepare(`
       SELECT *
       FROM orders
       WHERE id = ?
-    `).get(result.lastInsertRowid);
+    `).get(orderId);
 
     return res.status(201).json({
       status: "success",
-      message: "VELORA order created successfully!",
-      orderId: result.lastInsertRowid,
+      message: "VELORA marketplace order created successfully!",
+      orderId,
       order: {
         ...normalizeOrderFees(order),
         items: JSON.parse(order.items)
