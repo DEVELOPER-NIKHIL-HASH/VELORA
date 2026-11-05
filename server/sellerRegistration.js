@@ -523,7 +523,7 @@ export function registerSellerRegistrationRoutes(app, db, jwtSecret) {
         return res.status(200).json({
           status: "success",
           sessionToken,
-          step: "MOBILE_VERIFICATION",
+          step: "COMPLETE",
           message: "Email is already verified."
         });
       }
@@ -564,52 +564,79 @@ export function registerSellerRegistrationRoutes(app, db, jwtSecret) {
         });
       }
 
-      // Mark email verified
-      const phoneOtp = generateSecureOtp();
-      const phoneOtpHashed = hashOtp(phoneOtp, sessionToken, jwtSecret);
-      const phoneExpiresAt = Date.now() + 10 * 60 * 1000;
-      const now = Date.now();
+      // Email is verified! Establish the seller account in a database transaction
+      const createSeller = db.transaction(() => {
+        const userResult = db.prepare(`
+          INSERT INTO users (
+            name,
+            email,
+            phone,
+            password_hash,
+            role,
+            email_verified,
+            phone_verified
+          ) VALUES (?, ?, ?, ?, 'seller', 1, 0)
+        `).run(
+          session.name,
+          session.email,
+          session.phone,
+          session.password_hash
+        );
 
-      db.prepare(`
-        UPDATE seller_verifications
-        SET email_verified = 1,
-            phone_otp_hash = ?,
-            phone_otp_expires_at = ?,
-            phone_otp_attempts = 0,
-            phone_otp_last_sent_at = ?
-        WHERE id = ?
-      `).run(phoneOtpHashed, phoneExpiresAt, now, session.id);
+        const storeResult = db.prepare(`
+          INSERT INTO stores (owner_user_id, name, slug)
+          VALUES (?, ?, ?)
+        `).run(userResult.lastInsertRowid, session.store_name, session.store_slug);
 
-      // Attempt real SMS if configured
-      let smsResult = { sent: false, configured: isSmsConfigured() };
+        // Delete used verification session
+        db.prepare("DELETE FROM seller_verifications WHERE id = ?").run(session.id);
 
-      if (isSmsConfigured()) {
-        try {
-          const dispatched = await sendSmsOtp({
-            phone: session.phone,
-            otp: phoneOtp
-          });
-          smsResult = { sent: dispatched.sent, configured: true };
-        } catch (smsErr) {
-          console.error("SMS dispatch error:", smsErr.message);
-          smsResult = { sent: false, configured: true, error: smsErr.message };
+        return {
+          userId: Number(userResult.lastInsertRowid),
+          storeId: Number(storeResult.lastInsertRowid)
+        };
+      });
+
+      const created = createSeller();
+
+      // Sign JWT token
+      const token = jwt.sign(
+        { userId: created.userId, role: "seller" },
+        jwtSecret,
+        {
+          expiresIn: "7d",
+          issuer: "velora-api",
+          audience: "velora-sellers"
         }
-      }
+      );
+
+      // Send real welcome email asynchronously
+      sendWelcomeEmail({
+        to: session.email,
+        name: session.name
+      }).catch((e) => console.error("Welcome email background error:", e.message));
 
       return res.status(200).json({
         status: "success",
         sessionToken,
-        step: "MOBILE_VERIFICATION",
+        step: "COMPLETE",
         emailVerified: true,
-        phoneMasked: maskPhone(session.phone),
-        resendCooldown: 60,
-        smsConfigured: smsResult.configured,
-        smsSent: smsResult.sent,
-        message: smsResult.configured
-          ? smsResult.sent
-            ? `Email verified. A mobile verification SMS has been sent to ${maskPhone(session.phone)}.`
-            : `Email verified, but SMS dispatch encountered an error: ${smsResult.error || "SMS provider error"}`
-          : "Email verified. Note: SMS provider credentials (Twilio) are not yet configured in server/.env."
+        token,
+        seller: {
+          id: created.userId,
+          name: session.name,
+          email: session.email,
+          phone: session.phone,
+          role: "seller",
+          email_verified: 1,
+          phone_verified: 0
+        },
+        store: {
+          id: created.storeId,
+          name: session.store_name,
+          slug: session.store_slug
+        },
+        message: "Email verified & seller account established successfully. Welcome email dispatched."
       });
     } catch (error) {
       console.error("Verify email OTP error:", error.message);

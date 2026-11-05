@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import PasswordInput from "./PasswordInput";
 
-type Step = "ACCOUNT" | "EMAIL" | "MOBILE" | "COMPLETE";
+type Step = "ACCOUNT" | "EMAIL" | "COMPLETE";
 
 type ProviderStatus = {
   email: { configured: boolean; provider: string; requiredEnv: string[] };
@@ -41,9 +41,7 @@ export default function SellerRegistrationModal({
   // OTP Verification States
   const [sessionToken, setSessionToken] = useState("");
   const [emailOtp, setEmailOtp] = useState("");
-  const [phoneOtp, setPhoneOtp] = useState("");
   const [maskedEmail, setMaskedEmail] = useState("");
-  const [maskedPhone, setMaskedPhone] = useState("");
 
   // Timers and Cooldowns
   const [cooldown, setCooldown] = useState(0);
@@ -81,7 +79,7 @@ export default function SellerRegistrationModal({
 
   // Focus OTP input on step change
   useEffect(() => {
-    if (step === "EMAIL" || step === "MOBILE") {
+    if (step === "EMAIL") {
       setTimeout(() => otpInputRef.current?.focus(), 150);
     }
   }, [step]);
@@ -159,7 +157,6 @@ export default function SellerRegistrationModal({
 
       setSessionToken(data.sessionToken);
       setMaskedEmail(data.emailMasked || email.trim());
-      setMaskedPhone(data.phoneMasked || cleanPhone);
       setCooldown(data.resendCooldown || 60);
       setNotice(data.message || "Verification code dispatched to your email.");
       setStep("EMAIL");
@@ -170,7 +167,7 @@ export default function SellerRegistrationModal({
     }
   }
 
-  // Step 2: Verify Real Email OTP
+  // Step 2: Verify Real Email OTP & Establish Seller Account
   async function handleVerifyEmailOtp(e: FormEvent) {
     e.preventDefault();
     setError("");
@@ -199,50 +196,6 @@ export default function SellerRegistrationModal({
         throw new Error(data.message || "Email verification failed.");
       }
 
-      setCooldown(data.resendCooldown || 60);
-      setNotice(data.message || "Email verified. Proceeding to mobile verification.");
-      setStep("MOBILE");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Verification failed.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Step 3: Verify Real Mobile OTP & Create Account
-  async function handleVerifyMobileOtp(e: FormEvent) {
-    e.preventDefault();
-    setError("");
-    setNotice("");
-
-    if (!phoneOtp.trim() || phoneOtp.trim().length !== 6) {
-      setError("Please enter the complete 6-digit mobile code.");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const response = await fetch(`${API_BASE}/auth/seller/verify-mobile-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionToken,
-          otp: phoneOtp.trim()
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (data.code === "SMS_NOT_CONFIGURED") {
-          throw new Error(
-            "REAL SMS Delivery Not Configured: Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER in server/.env."
-          );
-        }
-        throw new Error(data.message || "Mobile verification failed.");
-      }
-
       // Store seller session token for instant authenticated redirect
       if (data.token) {
         sessionStorage.setItem("velora_seller_token", data.token);
@@ -255,7 +208,7 @@ export default function SellerRegistrationModal({
       setNotice("Account verified & created successfully. Welcome email dispatched.");
       setStep("COMPLETE");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Mobile verification failed.");
+      setError(err instanceof Error ? err.message : "Verification failed.");
     } finally {
       setLoading(false);
     }
@@ -282,32 +235,6 @@ export default function SellerRegistrationModal({
       setNotice(data.message || "A new 6-digit code has been dispatched.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not resend email code.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Resend Mobile OTP
-  async function handleResendMobileOtp() {
-    if (cooldown > 0 || loading) return;
-    setError("");
-    setNotice("");
-    setLoading(true);
-
-    try {
-      const response = await fetch(`${API_BASE}/auth/seller/resend-mobile-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionToken })
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Failed to resend SMS code.");
-
-      setCooldown(data.resendCooldown || 60);
-      setNotice(data.message || "A new SMS code has been dispatched.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not resend mobile code.");
     } finally {
       setLoading(false);
     }
@@ -386,7 +313,6 @@ async function handleGoogleLoginSuccess(credentialResponse: { credential?: strin
               <h2 className="mt-1 text-2xl sm:text-3xl font-normal font-editorial-serif tracking-tight">
                 {step === "ACCOUNT" && "Create Seller Account"}
                 {step === "EMAIL" && "Verify Your Email"}
-                {step === "MOBILE" && "Verify Mobile Number"}
                 {step === "COMPLETE" && "Atelier Activated"}
               </h2>
             </div>
@@ -401,15 +327,14 @@ async function handleGoogleLoginSuccess(credentialResponse: { credential?: strin
             </button>
           </div>
 
-          {/* Luxury 4-Step Progress Indicator */}
+          {/* Luxury 3-Step Progress Indicator */}
           <div className="my-6 flex items-center justify-between text-[11px] tracking-[0.2em] uppercase">
             {[
               { id: "ACCOUNT", label: "Account" },
               { id: "EMAIL", label: "Email" },
-              { id: "MOBILE", label: "Mobile" },
               { id: "COMPLETE", label: "Done" }
             ].map((s, index) => {
-              const stepIndex = ["ACCOUNT", "EMAIL", "MOBILE", "COMPLETE"].indexOf(step);
+              const stepIndex = ["ACCOUNT", "EMAIL", "COMPLETE"].indexOf(step);
               const isActive = s.id === step;
               const isPast = index < stepIndex;
 
@@ -434,11 +359,11 @@ async function handleGoogleLoginSuccess(credentialResponse: { credential?: strin
                           : "border-current/20 text-current/40"
                       }`}
                     >
-                      {isPast ? "âœ“" : index + 1}
+                      {isPast ? "✓" : index + 1}
                     </span>
                     <span
                       className={`h-px flex-1 ${
-                        index === 3
+                        index === 2
                           ? "bg-transparent"
                           : isPast
                           ? "bg-[#D4AF37]"
@@ -701,81 +626,7 @@ async function handleGoogleLoginSuccess(credentialResponse: { credential?: strin
           )}
 
           {/* =========================================================================
-              STEP 3: MOBILE VERIFICATION (REAL SMS OTP)
-             ========================================================================= */}
-          {step === "MOBILE" && (
-            <form onSubmit={handleVerifyMobileOtp} className="space-y-6">
-              <div className="rounded-2xl border border-current/10 bg-current/[0.02] p-5 text-center">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#D4AF37]/20 text-[#D4AF37] mb-3">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-base font-medium font-editorial-serif">
-                  Mobile Verification
-                </h3>
-                <p className="mt-1 text-xs opacity-65 leading-relaxed">
-                  Enter the 6-digit SMS verification code sent to{" "}
-                  <strong className="text-current font-medium">{maskedPhone}</strong>.
-                </p>
-
-                {!providerStatus?.sms.configured && (
-                  <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-left text-xs text-amber-400">
-                    <strong className="block font-semibold">SMS Provider Notice:</strong>
-                    Twilio SMS credentials are not yet configured on this server. To enable real SMS delivery, add <code className="bg-black/30 px-1 py-0.5 rounded">TWILIO_ACCOUNT_SID</code>, <code className="bg-black/30 px-1 py-0.5 rounded">TWILIO_AUTH_TOKEN</code>, and <code className="bg-black/30 px-1 py-0.5 rounded">TWILIO_PHONE_NUMBER</code> in <code className="bg-black/30 px-1 py-0.5 rounded">server/.env</code>.
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-center text-xs uppercase tracking-[0.2em] opacity-60 mb-2">
-                  Enter 6-Digit SMS Code
-                </label>
-                <input
-                  ref={otpInputRef}
-                  required
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  pattern="[0-9]{6}"
-                  value={phoneOtp}
-                  onChange={(e) => setPhoneOtp(e.target.value.replace(/\D/g, ""))}
-                  placeholder="&bull; &bull; &bull; &bull; &bull; &bull;"
-                  className="w-full text-center text-2xl tracking-[0.6em] font-semibold py-3.5 rounded-2xl border border-current/20 bg-current/[0.03] outline-none focus:border-[#D4AF37]"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || phoneOtp.length !== 6}
-                className="w-full rounded-full bg-[#D4AF37] hover:bg-[#E5C365] text-black py-4 text-xs font-semibold tracking-[0.24em] uppercase transition shadow-lg disabled:opacity-50"
-              >
-                {loading ? "Activating Atelier..." : "Verify & Activate Account â†’"}
-              </button>
-
-              <div className="flex items-center justify-between text-xs pt-2">
-                <button
-                  type="button"
-                  onClick={() => { setStep("EMAIL"); setError(""); }}
-                  className="opacity-50 hover:opacity-100 transition"
-                >
-                  &larr; Back to Email
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleResendMobileOtp}
-                  disabled={cooldown > 0 || loading || !providerStatus?.sms.configured}
-                  className="text-[#D4AF37] hover:underline disabled:opacity-40 disabled:no-underline font-medium"
-                >
-                  {cooldown > 0 ? `Resend SMS in ${cooldown}s` : "Resend SMS"}
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* =========================================================================
-              STEP 4: COMPLETE & REDIRECT
+              STEP 3: COMPLETE & REDIRECT
              ========================================================================= */}
           {step === "COMPLETE" && (
             <div className="text-center py-6 space-y-6">

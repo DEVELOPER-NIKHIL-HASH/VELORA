@@ -9,6 +9,14 @@ import TrackOrder from "./TrackOrder"
 import SellerDashboard from "./SellerDashboard"
 import SellerRegistrationModal from "./SellerRegistrationModal"
 import SellerStorefront from "./SellerStorefront"
+import CustomerAuthModal from "./CustomerAuthModal"
+import {
+  type CustomerUser,
+  getStoredCustomer,
+  subscribeToCustomerAuth,
+  fetchCurrentCustomer,
+  logoutCustomer
+} from "./services/customerAuth"
 import { launchRazorpayPayment, type CreatePaymentOrderResponse } from "./services/razorpay"
 
 
@@ -193,7 +201,22 @@ function Storefront() {
     simulateCancel: () => Promise<void>
   } | null>(null)
 
-  const accountMenuRef = useRef<HTMLDivElement>(null)
+  const [accountMenuRef] = [useRef<HTMLDivElement>(null)]
+  const [showCustomerModal, setShowCustomerModal] = useState(false)
+  const [customer, setCustomer] = useState<CustomerUser | null>(() => getStoredCustomer())
+
+  // Synchronize customer auth state
+  useEffect(() => {
+    const unsubscribe = subscribeToCustomerAuth((updated) => {
+      setCustomer(updated)
+    })
+    void fetchCurrentCustomer().then((res) => {
+      if (res?.customer) {
+        setCustomer(res.customer)
+      }
+    })
+    return unsubscribe
+  }, [])
 
   // Close account dropdown on outside click
   useEffect(() => {
@@ -511,13 +534,19 @@ function Storefront() {
                   <button
                     type="button"
                     onClick={() => setAccountMenuOpen(!accountMenuOpen)}
-                    className={`p-1.5 transition-colors flex items-center gap-1 ${theme === "dark" ? "hover:text-white" : "hover:text-[#121212]"}`}
+                    className={`p-1.5 transition-colors flex items-center gap-1.5 ${theme === "dark" ? "hover:text-white" : "hover:text-[#121212]"}`}
                     aria-label="Account Portals"
-                    title="Account & Portals"
+                    title={customer ? `Signed in as ${customer.name || customer.email || "Customer"}` : "Account & Portals"}
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
+                    {customer ? (
+                      <span className="w-6 h-6 rounded-full bg-[#D4AF37] text-black text-[11px] font-bold flex items-center justify-center shadow">
+                        {customer.name ? customer.name[0].toUpperCase() : "C"}
+                      </span>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    )}
                   </button>
 
                   <AnimatePresence>
@@ -526,11 +555,61 @@ function Storefront() {
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 8 }}
-                        className={`absolute right-0 mt-3 w-56 rounded-xl border backdrop-blur-xl py-2 shadow-2xl z-50 text-xs ${theme === "dark" ? "border-white/15 bg-[#141416]/95" : "border-[#121212/15] bg-[#F9F7F2]/95"}`}
+                        className={`absolute right-0 mt-3 w-64 rounded-xl border backdrop-blur-xl py-2 shadow-2xl z-50 text-xs ${theme === "dark" ? "border-white/15 bg-[#141416]/95" : "border-[#121212/15] bg-[#F9F7F2]/95"}`}
                       >
-                        <div className={`px-4 py-2 border-b ${theme === "dark" ? "border-white/10" : "border-[#121212/10]"}`}>
+                        {customer ? (
+                          <div className={`px-4 py-2.5 border-b ${theme === "dark" ? "border-white/10" : "border-[#121212/10]"}`}>
+                            <p className="text-[10px] tracking-[0.2em] uppercase text-[#D4AF37]">Welcome</p>
+                            <p className="font-medium text-xs truncate mt-0.5">{customer.name || "Valued Client"}</p>
+                            <p className={`text-[11px] truncate ${theme === "dark" ? "text-white/50" : "text-[#121212/50]"}`}>
+                              {customer.email || customer.phone}
+                            </p>
+                            <div className="mt-2.5 flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAccountMenuOpen(false)
+                                  setShowCustomerModal(true)
+                                }}
+                                className="flex-1 py-1.5 px-2.5 rounded-lg bg-[#D4AF37] text-black font-semibold text-[10px] tracking-wider uppercase text-center shadow"
+                              >
+                                Account & Orders
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAccountMenuOpen(false)
+                                  void logoutCustomer()
+                                }}
+                                className="py-1.5 px-2.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-[10px] tracking-wider uppercase transition"
+                              >
+                                Sign Out
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className={`p-3 border-b ${theme === "dark" ? "border-white/10" : "border-[#121212/10]"}`}>
+                            <p className={`text-[11px] mb-2 ${theme === "dark" ? "text-white/60" : "text-[#121212/60]"}`}>
+                              Sign in with secure Email or Mobile OTP.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAccountMenuOpen(false)
+                                setShowCustomerModal(true)
+                              }}
+                              className="w-full py-2.5 px-3 rounded-lg bg-[#D4AF37] hover:bg-[#E5C158] text-black font-semibold text-xs tracking-wider uppercase transition shadow flex items-center justify-center gap-1.5"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                              </svg>
+                              Sign In with OTP
+                            </button>
+                          </div>
+                        )}
+
+                        <div className={`px-4 py-1.5 border-b ${theme === "dark" ? "border-white/10" : "border-[#121212/10]"}`}>
                           <p className="text-[10px] tracking-[0.2em] uppercase text-[#D4AF37]">Portals</p>
-                          <p className={`text-[11px] mt-0.5 ${theme === "dark" ? "text-white/60" : "text-[#121212/60]"}`}>VELORA Ecosystem</p>
                         </div>
                         <a
                           href="/track-order"
@@ -832,6 +911,30 @@ function Storefront() {
                   <a href="#marketplace" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#D4AF37] transition">Marketplace</a>
                   <a href="#heritage" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#D4AF37] transition">Heritage</a>
                   <div className="h-px bg-white/10 my-2" />
+                  {customer ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileMenuOpen(false)
+                        setShowCustomerModal(true)
+                      }}
+                      className="text-left text-xs tracking-[0.2em] uppercase text-[#D4AF37] flex items-center justify-between"
+                    >
+                      <span>Account ({customer.name || "Client"})</span>
+                      <span className="text-[10px] opacity-75">&rarr;</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileMenuOpen(false)
+                        setShowCustomerModal(true)
+                      }}
+                      className="w-full py-2.5 px-3 rounded-lg bg-[#D4AF37] text-black font-semibold text-xs tracking-wider uppercase text-center"
+                    >
+                      Sign In with OTP
+                    </button>
+                  )}
                   <a href="/track-order" className="hover:text-[#D4AF37] transition text-xs tracking-[0.2em]">Track Order</a>
                   <a href="/seller" className="hover:text-[#D4AF37] transition text-xs tracking-[0.2em]">Seller Dashboard</a>
                   <a href="/admin" className="hover:text-[#D4AF37] transition text-xs tracking-[0.2em]">Admin Console</a>
@@ -1356,7 +1459,28 @@ function Storefront() {
                   </button>
                 </div>
 
-                <form onSubmit={placeOrder} className="mt-8 space-y-4">
+                {customer ? (
+                  <div className="mt-6 p-3 rounded-xl border border-[#D4AF37]/30 bg-[#D4AF37]/10 text-xs flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] uppercase tracking-wider text-[#D4AF37] font-semibold block">Signed In Client</span>
+                      <span className="font-medium">{customer.name || customer.email || customer.phone}</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] bg-[#D4AF37] text-black font-semibold uppercase">Verified</span>
+                  </div>
+                ) : (
+                  <div className="mt-6 p-3 rounded-xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 text-xs flex items-center justify-between">
+                    <span className="opacity-75">Have a VELORA account?</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomerModal(true)}
+                      className="text-[#D4AF37] hover:underline font-semibold"
+                    >
+                      Sign In with OTP &rarr;
+                    </button>
+                  </div>
+                )}
+
+                <form key={customer ? `cust-${customer.id}` : "guest"} onSubmit={placeOrder} className="mt-6 space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label className="mb-1 block text-xs opacity-70">Full Name *</label>
@@ -1365,6 +1489,7 @@ function Storefront() {
                         minLength={2}
                         maxLength={100}
                         name="name"
+                        defaultValue={customer?.name || ""}
                         placeholder="e.g. Eleanor Vance"
                         className="w-full rounded-xl border border-black/15 dark:border-white/15 bg-white dark:bg-white/5 px-4 py-3 text-xs outline-none focus:border-[#D4AF37]"
                       />
@@ -1376,6 +1501,7 @@ function Storefront() {
                         type="email"
                         maxLength={254}
                         name="email"
+                        defaultValue={customer?.email || ""}
                         placeholder="you@domain.com"
                         className="w-full rounded-xl border border-black/15 dark:border-white/15 bg-white dark:bg-white/5 px-4 py-3 text-xs outline-none focus:border-[#D4AF37]"
                       />
@@ -1391,6 +1517,7 @@ function Storefront() {
                         name="phone"
                         minLength={10}
                         maxLength={20}
+                        defaultValue={customer?.phone || ""}
                         placeholder="+91 98765 43210"
                         className="w-full rounded-xl border border-black/15 dark:border-white/15 bg-white dark:bg-white/5 px-4 py-3 text-xs outline-none focus:border-[#D4AF37]"
                       />
@@ -1584,6 +1711,17 @@ function Storefront() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Customer Email & Mobile OTP Authentication Modal */}
+      <CustomerAuthModal
+        isOpen={showCustomerModal}
+        onClose={() => setShowCustomerModal(false)}
+        theme={theme}
+        initialCustomer={customer}
+        onSuccess={(authenticatedCustomer) => {
+          setCustomer(authenticatedCustomer)
+        }}
+      />
 
       {/* Real Seller Onboarding & Verification Modal */}
       <SellerRegistrationModal

@@ -14,6 +14,7 @@ import { initSellerFeaturesDatabase, registerSellerFeatureRoutes } from "./selle
 import { PLATFORM_FEE_RATE, calculatePlatformFee, normalizeOrderFees } from "./fees.js";
 import { registerPaymentRoutes } from "./payments.js";
 import { initFinancialDatabase, registerFinancialRoutes, recordOrderDeliverySettlement } from "./financials.js";
+import { registerCustomerAuthRoutes } from "./customerAuth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -182,6 +183,7 @@ initSellerFeaturesDatabase(db);
 registerAuthRoutes(app, db, JWT_SECRET);
 registerAdminAuthRoutes(app, ADMIN_SECRET, ADMIN_PASSWORD_HASH);
 registerSellerRegistrationRoutes(app, db, JWT_SECRET);
+registerCustomerAuthRoutes(app, db, JWT_SECRET);
 const authenticateAdmin = createAdminAuthenticator(ADMIN_SECRET);
 
 // Seller product routes and public store routes
@@ -625,6 +627,13 @@ app.listen(PORT, () => {
   console.log("POST   /api/auth/register");
   console.log("POST   /api/auth/login");
   console.log("GET    /api/auth/me");
+  console.log("GET    /api/customer/auth/providers");
+  console.log("POST   /api/customer/auth/email/request-otp");
+  console.log("POST   /api/customer/auth/email/verify-otp");
+  console.log("POST   /api/customer/auth/mobile/request-otp");
+  console.log("POST   /api/customer/auth/mobile/verify-otp");
+  console.log("POST   /api/customer/auth/google");
+  console.log("GET    /api/customer/auth/me");
   console.log("GET    /api/products");
   console.log("POST   /api/products");
   console.log("PUT    /api/products/:id");
